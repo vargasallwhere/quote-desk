@@ -1,3 +1,13 @@
+# STATUS 2026-09-29: ported. Runs standalone (tested locally with env logins, no Scout Dev).
+`app.py` now uses `scout_port.py` (functions copied from Scout Dev, logins from env) and `gmail_auth.py` (env token).
+The Alternative Approval, Price Approval and Autopilot buttons hide themselves unless `SCOUT_URL` is set.
+
+## Replit secrets to add (names only)
+`GMAIL_TOKEN_JSON` (contents of gmail_token.json), `ALLWHERE_USER`, `ALLWHERE_PASS`, `PS_USER`, `PS_PASS`.
+
+---
+Original notes:
+
 # Porting Quote Desk to Replit
 
 Quote Desk runs today only on Sara's Mac. `app.py` borrows three things from Scout Dev that do not exist on Replit.

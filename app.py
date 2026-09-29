@@ -6,11 +6,10 @@ from email.utils import getaddresses, formataddr
 from email.utils import parsedate_to_datetime
 from flask import Flask, jsonify, request, Response, send_from_directory
 
-sys.path.insert(0, os.path.expanduser("~/Claude_projects/sourcing-scout-dev/backend"))
 from gmail_auth import get_gmail_service
 import requests
-from order_confirm_engine import fetch_full_order, build_confirmation_email
-from scout_engine import ALLWHERE_AUTH, generate_auto_quote_email
+from scout_port import (fetch_full_order, build_confirmation_email, get_order_info_for_ticket,
+                        generate_auto_quote_email, ALLWHERE_AUTH)
 
 app = Flask(__name__)
 _svc = {}
@@ -157,12 +156,23 @@ def quote_draft():
     return jsonify(r), (404 if "error" in r else 200)
 
 
-SCOUT = "http://localhost:5002"  # Scout Dev backend; its review pages and parser are reused as they are
+SCOUT = os.environ.get("SCOUT_URL", "")  # Scout Dev backend, only reachable from Sara's Mac. Empty on Replit.
 
 
 def _scout(path, body):
     r = requests.post(SCOUT + path, json=body, timeout=30)
     return r.json()
+
+
+@app.get("/api/config")
+def config():
+    return jsonify({"scout": bool(SCOUT)})
+
+
+@app.before_request
+def scout_only():
+    if not SCOUT and request.path in ("/api/alt-review", "/api/price-review", "/api/autopilot"):
+        return jsonify({"error": "This button needs Scout Dev, which only runs on Sara's Mac."}), 503
 
 
 def _device_type(name):
@@ -175,7 +185,7 @@ def _device_type(name):
 
 @app.get("/api/ticket-info/<po>")
 def ticket_info(po):
-    return jsonify(_scout("/order-info", {"order_number": po}))
+    return jsonify(get_order_info_for_ticket(po))
 
 
 def _header(info):
@@ -187,7 +197,7 @@ def _header(info):
 def alt_review():
     """Same as Scout Dev's Alternative Approval: parse the pasted alternative, open its review page."""
     d = request.get_json()
-    info = _scout("/order-info", {"order_number": d["po"]})
+    info = get_order_info_for_ticket(d["po"])
     items = [info["items"][i] for i in d["items"]]
     country = "uk" if "kingdom" in (info.get("shipping_country") or "").lower() else ("us" if "states" in (info.get("shipping_country") or "").lower() else "")
     parsed = _scout("/parse-alt-description", {"text": d["text"], "country": country}) if d.get("text", "").strip() else {}
@@ -208,7 +218,7 @@ def alt_review():
 @app.post("/api/price-review")
 def price_review():
     d = request.get_json()
-    info = _scout("/order-info", {"order_number": d["po"]})
+    info = get_order_info_for_ticket(d["po"])
     review = {**_header(info), "order_number": d["po"],
               "items": [{"sku": info["items"][i].get("sku", ""), "product_name": info["items"][i].get("product_name", "")} for i in d["items"]]}
     sid = _scout("/review-session", review)["session_id"]
@@ -222,10 +232,12 @@ def td_confirm():
     order = fetch_full_order(po)
     if "error" in order:
         return jsonify(order), 404
-    try:
-        card = requests.get(SCOUT + "/daily-card", timeout=10).json().get("last4", "")
-    except Exception:
-        card = ""
+    card = ""
+    if SCOUT:
+        try:
+            card = requests.get(SCOUT + "/daily-card", timeout=10).json().get("last4", "")
+        except Exception:
+            pass
     return jsonify({"body": build_confirmation_email(order, card or "____", None), "card_set": bool(card)})
 
 
@@ -245,4 +257,5 @@ def attachment(msg, att):
 
 
 if __name__ == "__main__":
-    app.run(port=5070, debug=False)
+    port = int(os.environ.get("PORT", 5070))
+    app.run(host="0.0.0.0" if os.environ.get("PORT") else "127.0.0.1", port=port, debug=False)

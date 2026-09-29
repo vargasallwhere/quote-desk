@@ -289,4 +289,6 @@ $("#bAp").onclick=async()=>{
   try{const r=await fetch("/api/autopilot",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({po:cur})});
     const j=await r.json();if(!r.ok||!j.url)throw new Error(j.error||"failed");w.location=j.url;box.textContent="Opened the Autopilot form in a new tab."}
   catch(e){if(w)w.close();box.textContent="Could not generate it: "+e.message}};
+</script><script>
+fetch("/api/config").then(r=>r.json()).then(c=>{if(!c.scout)["bAlt","bPr","bAp"].forEach(id=>{const b=document.getElementById(id);if(b)b.hidden=true})}).catch(()=>{});
 </script>

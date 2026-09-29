@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Quote Desk</title>
+<style>
+:root{--bg:#f3f5f7;--panel:#fff;--line:#dde2e8;--fg:#1b2430;--muted:#5f6b7a;--accent:#0f5f6b;--accent-soft:#e0f0f2;--accent-fg:#fff;--warn:#a15c00;--warn-soft:#fdf0d8;--ok:#1a7f4b;--ok-soft:#e1f4e9;
+--sans:system-ui,-apple-system,"Segoe UI",sans-serif;--mono:ui-monospace,Menlo,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#12171d;--panel:#1b222b;--line:#2c3541;--fg:#e6ebf0;--muted:#95a1b0;--accent:#5cc0cf;--accent-soft:#17343a;--accent-fg:#0b1a1d;--warn:#f0b34d;--warn-soft:#3a2b10;--ok:#5fd394;--ok-soft:#173526;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 var(--sans);padding:16px}
+button{font:inherit;cursor:pointer}
+.mono{font-family:var(--mono)}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
+.po{border:1px solid var(--line);background:var(--panel);color:var(--fg);padding:6px 12px;border-radius:99px;font-family:var(--mono);font-size:12.5px}
+.po[aria-current=true]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.bar input{border:1px solid var(--line);background:var(--panel);color:var(--fg);padding:6px 10px;border-radius:6px;font:12.5px var(--mono);width:190px}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--fg);padding:6px 12px;border-radius:6px;font-weight:600;font-size:13px}
+.split{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,7fr);gap:14px;align-items:start}
+@media (max-width:820px){.split{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;min-width:0}
+.ph{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px}
+.ph h2{margin:0;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.hl{border-radius:3px;padding:0 3px;font-weight:600}
+.hl-cpu{background:#cfe3ff;color:#0b2a55}.hl-mem{background:#e6d9ff;color:#2f1a5e}.hl-ssd{background:#cdeed9;color:#0d3b22}
+.hl-color{background:#ffe2a8;color:#5a3900}.hl-kb{background:#ffd6e5;color:#5e1233}.hl-size{background:#c9eef0;color:#0b3d42}.hl-mpn{background:#e3e7ec;color:#1b2430;font-family:ui-monospace,Menlo,monospace}
+:root:not([data-focus]) .hl:not(button){background:transparent;color:inherit;font-weight:inherit;padding:0}
+:root[data-focus="cpu"] .hl:not(.hl-cpu):not(button){background:transparent;color:inherit;font-weight:inherit;padding:0}
+:root[data-focus="mem"] .hl:not(.hl-mem):not(button){background:transparent;color:inherit;font-weight:inherit;padding:0}
+:root[data-focus="ssd"] .hl:not(.hl-ssd):not(button){background:transparent;color:inherit;font-weight:inherit;padding:0}
+:root[data-focus="color"] .hl:not(.hl-color):not(button){background:transparent;color:inherit;font-weight:inherit;padding:0}
+:root[data-focus="kb"] .hl:not(.hl-kb):not(button){background:transparent;color:inherit;font-weight:inherit;padding:0}
+:root[data-focus="size"] .hl:not(.hl-size):not(button){background:transparent;color:inherit;font-weight:inherit;padding:0}
+:root[data-focus="mpn"] .hl:not(.hl-mpn):not(button){background:transparent;color:inherit;font-weight:inherit;padding:0}
+.hlbd .hl{color:transparent!important}
+button.hl{border:0;font:inherit;font-size:12px;cursor:pointer}
+button.hl[aria-pressed="true"]{outline:2px solid var(--fg);outline-offset:1px}
+.legend{display:flex;gap:6px;flex-wrap:wrap;margin:-4px 0 12px;font-size:12px}
+.hlwrap{position:relative;background:var(--bg);border:1px solid var(--line);border-radius:6px}
+.reply .hlwrap textarea{position:relative;display:block;border:0;background:transparent;resize:none;overflow:hidden;min-height:110px;padding:8px 10px;font:inherit;line-height:1.5}
+.hlbd{position:absolute;inset:0;padding:8px 10px;white-space:pre-wrap;overflow-wrap:break-word;color:transparent;pointer-events:none;font:inherit;line-height:1.5}
+.hlbd .hl{color:transparent;font-weight:inherit;padding:0;border-radius:2px}
+.status{display:inline-block;background:#5bb8c4;color:#062b30;font-weight:700;padding:3px 14px;border-radius:99px;font-size:14px}
+.ap{padding:12px 16px 16px;border-top:1px solid var(--line);display:grid;gap:8px}
+.ap .btns{display:flex;flex-wrap:wrap;gap:8px}
+.ap label.it{display:flex;gap:8px;font-size:13px;align-items:flex-start}
+.ap textarea{width:100%;min-height:70px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit;padding:8px}
+.cb{margin:12px 16px 0;padding:7px 12px;border-radius:6px;font-weight:700;font-size:14px;letter-spacing:.2px}
+.cb-us{background:#0c2d0c;color:#86efac;border:1px solid #166534}.cb-uk{background:#1b2e4b;color:#93c5fd;border:1px solid #1d4ed8}.cb-eu{background:#1f1b3d;color:#c4b5fd;border:1px solid #5b21b6}
+.cto{margin:8px 16px 0;padding:9px 12px;border-radius:6px;font-size:13px;font-weight:600;line-height:1.5}
+.cto-warning{background:#431407;color:#fed7aa;border:1px solid #9a3412}.cto-approved{background:#14532d;color:#bbf7d0;border:1px solid #15803d}
+.big{font-size:22px;font-weight:700;letter-spacing:-.01em}
+.bar input{width:280px;font-size:15px;padding:9px 12px}
+.sync{color:var(--muted);font-size:12px}
+.facts{padding:4px 16px 12px;margin:0}
+.facts div{display:grid;grid-template-columns:100px minmax(0,1fr);gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.facts div:first-child{border-top:0}
+.facts dt{color:var(--muted);font-weight:600;font-size:13px}.facts dd{margin:0;overflow-wrap:anywhere}
+.facts small{display:block;color:var(--muted);font-size:12px}
+.msg{border-bottom:1px solid var(--line)}.msg:last-child{border-bottom:0}
+.mh{display:flex;justify-content:space-between;gap:8px;padding:12px 16px;cursor:pointer;align-items:baseline}
+.mh b{font-weight:600}.mh span{color:var(--muted);font-size:12.5px}
+.snip{color:var(--muted);font-size:12.5px;padding:0 16px 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mb{padding:0 16px 14px}
+.meta{color:var(--muted);font-size:12px;margin-bottom:8px;overflow-wrap:anywhere}
+iframe{width:100%;border:0;background:#fff;border-radius:4px;min-height:60px}
+.att{display:inline-flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:6px 10px;margin:8px 8px 0 0;font-size:12.5px;color:var(--fg);text-decoration:none;background:var(--bg)}
+.chip{font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--warn-soft);color:var(--warn);margin-left:6px}
+.reply{border-top:1px solid var(--line);padding:14px 16px;display:grid;gap:8px}
+.reply label{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.05em}
+.reply input,.reply textarea{width:100%;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit;padding:8px 10px}
+.reply textarea{min-height:130px;resize:vertical}
+.reply .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.btn.danger{background:#b3261e;color:#fff;border-color:#b3261e}
+.chip.plain{background:var(--bg);color:var(--muted);border:1px solid var(--line);display:inline-block;margin:0 4px 4px 0}
+.chip.ok{background:var(--ok-soft);color:var(--ok);margin:0 4px 4px 0;display:inline-block}
+.note{color:var(--muted);font-size:12.5px}.empty{padding:24px 16px;color:var(--muted)}
+.err{padding:16px;color:#b3261e}
+select{padding:5px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--fg)}
+</style></head><body>
+<div class="bar" id="bar"></div>
+<div class="legend"><button class="hl hl-cpu" data-k="cpu" aria-pressed="false">Chip &amp; cores</button><button class="hl hl-mem" data-k="mem" aria-pressed="false">Memory</button><button class="hl hl-ssd" data-k="ssd" aria-pressed="false">Storage</button><button class="hl hl-color" data-k="color" aria-pressed="false">Color</button><button class="hl hl-kb" data-k="kb" aria-pressed="false">Keyboard</button><button class="hl hl-size" data-k="size" aria-pressed="false">Screen size</button><button class="hl hl-mpn" data-k="mpn" aria-pressed="false">MPN</button></div>
+<div class="split">
+  <section class="panel"><div class="ph"><h2>Order details</h2><strong class="big mono" id="po"></strong></div><div id="cb" hidden></div><div id="cto" hidden></div><div id="order"><p class="empty">Loading…</p></div><div class="ap" id="ap" hidden><div class="ph" style="padding:0 0 6px;border:0"><h2>Approvals</h2></div><div class="btns"><button class="btn" id="bAlt">Alternative Approval Ticket</button><button class="btn" id="bAr">Manual AR Ticket</button><button class="btn" id="bPr">Price Approval</button></div><div class="btns" id="usBtns" hidden><button class="btn" id="bTd">🇺🇸 TD Synnex Confirmation Email</button><button class="btn" id="bAp">📋 Generate Autopilot Form</button></div><div id="usbox" class="note"></div><div id="apbox"></div></div></section>
+  <section class="panel"><div class="ph"><h2>Vendor email</h2><span class="sync" id="sync"></span></div><div id="thread"></div></section>
+</div>
+<script>
+let cur=decodeURIComponent(location.hash.slice(1));try{cur=cur||localStorage.getItem("qd_last")||""}catch(e){}
+let req=0,order=null,tinfo=null;
+
+
+const FLAGS={"united states":"🇺🇸","us":"🇺🇸","usa":"🇺🇸","united kingdom":"🇬🇧","uk":"🇬🇧","gb":"🇬🇧","great britain":"🇬🇧","germany":"🇩🇪","france":"🇫🇷","netherlands":"🇳🇱","spain":"🇪🇸","italy":"🇮🇹","belgium":"🇧🇪","ireland":"🇮🇪","austria":"🇦🇹","poland":"🇵🇱","portugal":"🇵🇹","sweden":"🇸🇪","denmark":"🇩🇰","finland":"🇫🇮","norway":"🇳🇴","switzerland":"🇨🇭","czech republic":"🇨🇿","czechia":"🇨🇿","romania":"🇷🇴","hungary":"🇭🇺","luxembourg":"🇱🇺","greece":"🇬🇷","croatia":"🇭🇷","slovakia":"🇸🇰","slovenia":"🇸🇮","bulgaria":"🇧🇬","estonia":"🇪🇪","latvia":"🇱🇻","lithuania":"🇱🇹","canada":"🇨🇦","australia":"🇦🇺","japan":"🇯🇵","india":"🇮🇳","singapore":"🇸🇬","mexico":"🇲🇽","brazil":"🇧🇷"};
+function showCountry(sc){
+  // same rules as Scout Dev's detectCountry: UK + Australia = uk group, blank/US = us, everything else = eu
+  const c=(sc||"").trim().toLowerCase(),flag=FLAGS[c]||"🌍";
+  let cls,label;
+  if(["united kingdom","gb","uk","great britain"].includes(c)){cls="uk";label="UK"}
+  else if(["australia","au"].includes(c)){cls="uk";label=sc.trim()}
+  else if(["united states","us","usa",""].includes(c)){cls="us";label="US"}
+  else{cls="eu";label=sc.trim()}
+  const b=$("#cb");$("#usBtns").hidden=cls!=="us";b.className="cb cb-"+cls;b.textContent=flag+" "+label+" Order";b.hidden=false}
+
+function showCto(t){
+  // same rule and wording as Scout Dev: a Z-prefix MPN is a CTO; lead_time_approved decides which banner
+  const b=$("#cto");if(!t.cto_detected){b.hidden=true;return}
+  const mpns=[...new Set(t.cto_mpns||[])].join(", "),ok=t.lead_time_approved;
+  b.className="cto "+(ok?"cto-approved":"cto-warning");
+  b.textContent=ok?"This is a CTO device with an approved lead time, please proceed."+(mpns?" MPN: "+mpns:""):"⚠️ CTO — lead time not approved. A ticket is required."+(mpns?" MPN: "+mpns:"");
+  b.hidden=false}
+
+function warrantyHtml(w){
+  if(!w)return "—";
+  const dev=w.devices.map(d=>`${d.qty} × ${esc(d.name.replace(/^\(UK\) \| |^\(US\) \| /,"").slice(0,48))}… <span class="chip ${/^add/i.test(d.plan)?"ok":"plain"}">${esc(d.plan)}</span>`).join("<br>");
+  const lines=w.lines.map(l=>`<b>${esc(l.name)}</b><small>SKU ${esc(l.sku)} · qty ${l.qty} · $${l.price.toFixed(2)}</small>`).join("");
+  return (dev||"")+(lines?`<p style="margin:6px 0 0">${lines}</p>`:"")||"—"}
+let focusK="";
+function setFocus(k){focusK=k;const set=d=>{if(k)d.documentElement.dataset.focus=k;else delete d.documentElement.dataset.focus};
+  set(document);document.querySelectorAll("iframe").forEach(f=>{try{set(f.contentDocument)}catch(e){}});
+  document.querySelectorAll(".legend button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.k===k)))}
+document.querySelectorAll(".legend button").forEach(b=>b.onclick=()=>setFocus(focusK===b.dataset.k?"":b.dataset.k));
+function wireHL(ta){
+  const wrap=document.createElement("div"),bd=document.createElement("div");wrap.className="hlwrap";bd.className="hlbd";
+  ta.parentNode.insertBefore(wrap,ta);wrap.append(bd,ta);
+  const upd=()=>{ta.style.height="auto";ta.style.height=ta.scrollHeight+2+"px";bd.innerHTML=hl(ta.value)+"\n"};
+  ta.addEventListener("input",upd);upd()}
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+const HL=[["mpn",/\b[A-Z0-9]{5,7}\/[A-Z]\b|\b[Zz][0-9A-Za-z]{8,}\b/],["cpu",/\bM\d(?:\s+(?:Pro|Max|Ultra))?\b|\b\d+[\u2011\u2010\-\u2013]\s?Core\s+(?:CPU|GPU)\b/],["ssd",/\b\d+(?:\.\d)?\s?TB\b/],["mem",/\b\d{1,4}\s?GB\b/],["color",/\b(?:Space Black|Space Gr[ae]y|Silver|Midnight|Starlight|Sky Blue)\b/],["kb",/\b(?:UK|US)\s+English(?:\s+Standard)?\b/],["size",/\b1[3-6](?:"|\u201d|-inch| inch)/]];
+const HLALL=new RegExp(HL.map(x=>"("+x[1].source+")").join("|"),"g");
+function hlKind(m,i){let k=HL[i][0];if(k==="mem"&&parseInt(m)>=256)k="ssd";return k}
+function hlParts(text){const out=[];let last=0,m;HLALL.lastIndex=0;
+  while((m=HLALL.exec(text))){const i=m.slice(1).findIndex(x=>x!==undefined);out.push([text.slice(last,m.index)]);out.push([m[0],hlKind(m[0],i)]);last=m.index+m[0].length}
+  out.push([text.slice(last)]);return out}
+function hl(text){return hlParts(String(text??"")).map(p=>p[1]?`<span class="hl hl-${p[1]}">${esc(p[0])}</span>`:esc(p[0])).join("")}
+function hlDom(doc){
+  const st=doc.createElement("style");st.textContent=document.querySelector("style").textContent.match(/\.hl[^]*?\.legend/)[0].replace(/\.legend$/,"");doc.head.appendChild(st);
+  const w=doc.createTreeWalker(doc.body,NodeFilter.SHOW_TEXT),nodes=[];while(w.nextNode())nodes.push(w.currentNode);
+  nodes.forEach(n=>{if(!n.nodeValue.trim()||/^(STYLE|SCRIPT)$/.test(n.parentNode.nodeName))return;const ps=hlParts(n.nodeValue);if(ps.length<3)return;
+    const f=doc.createDocumentFragment();ps.forEach(p=>{if(!p[0])return;if(p[1]){const s=doc.createElement("span");s.className="hl hl-"+p[1];s.textContent=p[0];f.appendChild(s)}else f.appendChild(doc.createTextNode(p[0]))});n.parentNode.replaceChild(f,n)})}
+function bar(){
+  $("#bar").innerHTML=`<input id="add" placeholder="Type a PO and press Enter" value="${esc(cur)}" aria-label="PO number"><button class="btn" id="refresh">Refresh from Gmail</button>`;
+  $("#add").onkeydown=e=>{if(e.key==="Enter"&&e.target.value.trim())openPO(e.target.value.trim())};
+  $("#refresh").onclick=()=>{if(cur)openPO(cur)};
+}
+async function openPO(po){
+  cur=po;const my=++req;bar();try{localStorage.setItem("qd_last",po)}catch(e){}$("#po").textContent=po;
+  $("#usBtns").hidden=true;$("#usbox").innerHTML="";$("#ap").hidden=true;$("#cb").hidden=true;$("#cto").hidden=true;$("#apbox").innerHTML="";tinfo=null;$("#order").innerHTML='<p class="empty">Loading…</p>';$("#thread").innerHTML='<p class="empty">Loading from Gmail…</p>';$("#sync").textContent="";
+  fetch("/api/order/"+encodeURIComponent(po)).then(r=>r.json()).then(o=>{if(my===req){order=o;showOrder(o)}}).catch(e=>{if(my===req)$("#order").innerHTML='<p class="err">'+esc(e)+'</p>'});
+  fetch("/api/ticket-info/"+encodeURIComponent(po)).then(r=>r.json()).then(t=>{if(my===req&&!t.error){tinfo=t;$("#ap").hidden=false;showCountry(t.shipping_country);showCto(t)}}).catch(()=>{});
+  fetch("/api/threads/"+encodeURIComponent(po)).then(r=>r.json()).then(t=>{if(my===req)showThreads(t)}).catch(e=>{if(my===req)$("#thread").innerHTML='<p class="err">'+esc(e)+'</p>'});
+}
+function showOrder(o){
+  if(o.error){$("#order").innerHTML='<p class="err">'+esc(o.error)+'</p>';return}
+  const r=o.recipient,items=o.order_items.map(i=>`${i.qty} × ${hl(i.name)}<small class="mono">${hl(i.mpn)}</small>`).join("<br>")||"—";
+  $("#order").innerHTML=`<dl class="facts">
+   <div><dt>Order status</dt><dd><span class="status">${esc((o.status||"—").toLowerCase().replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase()))}</span></dd></div>
+   <div><dt>Customer</dt><dd>${esc(o.org_name)}<small>${esc(o.purchaser.name)}</small></dd></div>
+   <div><dt>Items</dt><dd>${items}</dd></div>
+   <div><dt>Ship to</dt><dd>${esc(r.first_name)} ${esc(r.last_name)}<small>${esc([r.address1,r.address2,r.city,r.state,r.zip,r.country].filter(Boolean).join(", "))}</small><small class="mono">${esc(r.phone)}</small></dd></div>
+   <div><dt>Shipping</dt><dd>${esc(o.shipping_type)||"—"}</dd></div>
+   <div><dt>Warranty</dt><dd>${warrantyHtml(o.warranty)}</dd></div>
+   <div><dt>Approved</dt><dd>${[o.color_swap_approved&&"Color swap",o.lead_time_approved&&"Lead time up to 6 weeks"].filter(Boolean).map(x=>`<span class="chip ok">✓ ${x}</span>`).join(" ")||"Nothing extra approved"}</dd></div></dl>`;
+}
+const fmt=d=>{try{return new Date(d).toLocaleString([], {dateStyle:"medium",timeStyle:"short"})}catch(e){return d}};
+function showThreads(t){
+  $("#sync").textContent="Synced with Gmail "+new Date(t.synced*1000).toLocaleTimeString();
+  if(!t.threads.length){$("#thread").innerHTML='<div class="empty">No Gmail thread yet for this PO.<p><button class="btn primary" id="qd">Draft quote request email</button> <span class="note" id="qs"></span></p></div>';
+    $("#qd").onclick=async()=>{const b=$("#qd");b.disabled=true;$("#qs").textContent="Creating draft in Gmail…";
+      const r=await fetch("/api/quote-draft",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({po:cur})});const j=await r.json();
+      if(!r.ok){$("#qs").textContent=j.error||"Failed";b.disabled=false;return}openPO(cur)};return}
+  const sel=t.threads.length>1?`<div class="ph"><span class="sync">${t.threads.length} threads match this PO</span><select id="ts">${t.threads.map((x,i)=>`<option value="${i}">${esc(x.messages[0].subject)} · ${x.messages.length} msg · ${fmt(x.messages.at(-1).date)}</option>`).join("")}</select></div>`:"";
+  $("#thread").innerHTML=sel+'<div id="msgs"></div><div id="reply" class="reply"></div>';
+  const draw=i=>{const th=t.threads[i];$("#msgs").innerHTML=th.messages.map((m,j,a)=>msgHtml(m,j===a.length-1)).join("");wire();composer(th,t.drafts)};
+  draw(0);if($("#ts"))$("#ts").onchange=e=>draw(+e.target.value);
+}
+function msgHtml(m,open){
+  const draft=m.labels.includes("DRAFT"),plain=(m.text||"").replace(/\s+/g," ").slice(0,140);
+  const atts=m.attachments.map(a=>`<a class="att" target="_blank" href="/api/attachment/${m.id}/${encodeURIComponent(a.id)}?name=${encodeURIComponent(a.name)}&type=${encodeURIComponent(a.type)}">📎 ${esc(a.name)}</a>`).join("");
+  const body=m.html?`<iframe sandbox="allow-same-origin" data-html="${esc(m.html)}"></iframe>`:`<pre style="white-space:pre-wrap;font:inherit;margin:0">${hl(m.text)}</pre>`;
+  return `<div class="msg" data-open="${open}"><div class="mh"><b>${esc(m.from.replace(/<.*>/,""))||"—"}${draft?'<span class="chip">Draft</span>':""}</b><span>${fmt(m.date)}</span></div>
+   <div class="snip">${esc(plain)}</div>
+   <div class="mb"><div class="meta">To: ${esc(m.to)}${m.cc?" · Cc: "+esc(m.cc):""}</div>${body}<div>${atts}</div></div></div>`;
+}
+function wire(){
+  document.querySelectorAll(".msg").forEach(el=>{
+    const set=o=>{el.dataset.open=o;el.querySelector(".mb").hidden=!o;el.querySelector(".snip").hidden=o;
+      if(o)el.querySelectorAll("iframe[data-html]").forEach(f=>{if(!f.dataset.done){f.dataset.done=1;f.srcdoc=f.dataset.html;
+        f.onload=()=>{try{hlDom(f.contentDocument);if(focusK)f.contentDocument.documentElement.dataset.focus=focusK;f.style.height=f.contentDocument.documentElement.scrollHeight+"px"}catch(e){}}}})};
+    el.querySelector(".mh").onclick=()=>set(el.dataset.open!=="true");
+    set(el.dataset.open==="true");
+  });
+}
+bar();if(cur)openPO(cur);else{$("#order").innerHTML='<p class="empty">Type a PO above to pull up its order and Gmail thread.</p>';$("#thread").innerHTML=""}
+</script></body></html>
+<script>
+const ME="sara@allwhere.co";
+function addrs(...l){const seen=new Set(),out=[];l.join(",").split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(x=>x.trim()).filter(Boolean).forEach(a=>{const e=(a.match(/<(.+)>/)||[0,a])[1].toLowerCase();if(e!==ME&&!seen.has(e)){seen.add(e);out.push(a)}});return out.join(", ")}
+function composer(th,drafts){
+  const msgs=th.messages,draftMsg=[...msgs].reverse().find(m=>m.labels.includes("DRAFT"));
+  const last=[...msgs].reverse().find(m=>!m.labels.includes("DRAFT"));
+  if(!last)return quoteComposer(th,draftMsg,drafts[draftMsg.id]);
+  const inbound=last;
+  const hasQuote=last.attachments.some(a=>/pdf/i.test(a.type)||/\.pdf$/i.test(a.name));
+  if(last.labels.includes("SENT")){$("#reply").innerHTML='<span class="note">You replied last. Waiting on the vendor.</span>';return}
+  if(!hasQuote){$("#reply").innerHTML='<span class="note">The vendor\'s latest message has no quote attached, so no confirmation is due yet.</span>';return}
+  const ph=order&&order.recipient?order.recipient.phone:"";
+  const to=draftMsg?draftMsg.to:addrs(inbound.reply_to||inbound.from),cc=draftMsg?draftMsg.cc:addrs(inbound.to,inbound.cc).split(", ").filter(a=>!to.includes(a)).join(", ");
+  const body=draftMsg?draftMsg.text.split(/\r?\nOn .* wrote:/)[0].trim():"Thank you. This order is confirmed, please process it.\n\n"+(ph?ph+"\n\n":"")+"Best,\nSara";
+  const fresh=(last.text||"").split(/\r?\n(?:From:|On .*wrote:|-{3,} ?Original)/)[0];
+  const alt=/out of stock|not (currently )?(in stock|available)|unavailable|no stock|back ?order|alternative|closest|instead|in lieu|substitut/i.test(fresh);
+  const kind=alt?"alt":"instock";
+  const verdict=alt?'Looks like: <b>out of stock, alternative offered</b>. Approved on this order: '+([order&&order.color_swap_approved&&"color swap",order&&order.lead_time_approved&&"lead time up to 6 weeks"].filter(Boolean).join(", ")||"nothing extra")+". Check the alternative differs only in what is approved."
+     :'Looks like: <b>in stock, quote attached</b>.';
+  let draftId=draftMsg?drafts[draftMsg.id]:null;
+  const subj=/^re:/i.test(last.subject)?last.subject:"Re: "+last.subject;
+  const body2=draftMsg||kind==="instock"?body:"";
+  $("#reply").innerHTML=`<div class="note" style="margin-bottom:4px">${verdict}</div><label>${draftId?"YOUR EXISTING GMAIL DRAFT (editing it, not making a second)":"REPLY"}</label>
+   <input id="rto" value="${esc(to)}" aria-label="To"><input id="rcc" value="${esc(cc)}" placeholder="Cc" aria-label="Cc">
+   <textarea id="rbody" aria-label="Reply">${esc(body2)}</textarea>
+   <div class="row"><span class="note" id="rstat">Nothing is sent until you press Send.</span><span><button class="btn" id="rsave">Save draft to Gmail</button> <button class="btn primary" id="rsend">Send…</button></span></div>`;
+  wireHL($("#rbody"));
+  const quote=()=>"\n\nOn "+last.date+", "+last.from+" wrote:\n"+(last.text||"").split("\n").map(l=>"> "+l).join("\n");
+  const save=async()=>{const r=await fetch("/api/draft",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({threadId:th.id,draftId,to:$("#rto").value,cc:$("#rcc").value,subject:subj,inReplyTo:last.message_id,references:last.references,body:$("#rbody").value+quote()})});
+    const j=await r.json();if(!r.ok)throw new Error(j.error||"Gmail refused the draft");draftId=j.draftId;return j};
+  $("#rsave").onclick=async()=>{$("#rstat").textContent="Saving…";try{await save();$("#rstat").textContent="Saved as a draft in Gmail at "+new Date().toLocaleTimeString()+". Not sent."}catch(e){$("#rstat").textContent="Could not save: "+e.message}};
+  $("#rsend").onclick=()=>{
+    const b=$("#rsend");
+    if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Yes, send now";b.classList.add("danger");$("#rstat").textContent="This sends a real email to: "+$("#rto").value+($("#rcc").value?" (Cc "+$("#rcc").value+")":"");return}
+    b.disabled=true;$("#rstat").textContent="Sending…";
+    save().then(j=>fetch("/api/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({draftId:j.draftId})}))
+     .then(r=>r.json().then(j=>{if(!r.ok)throw new Error(j.error||"send failed");$("#rstat").textContent="Sent at "+new Date().toLocaleTimeString()+". Reloading the thread from Gmail…";setTimeout(()=>openPO(cur),1500)}))
+     .catch(e=>{$("#rstat").textContent="Not sent: "+e.message+". Check Gmail before trying again.";b.disabled=false})};
+}
+</script><script>
+function quoteComposer(th,d,draftId){
+  $("#msgs").innerHTML="";
+  $("#reply").innerHTML=`<div class="note" style="margin-bottom:4px">Quote request to the vendor. It is a draft in your Gmail and has not been sent.</div>
+   <input id="rto" value="${esc(d.to)}" aria-label="To"><input id="rcc" value="${esc(d.cc)}" placeholder="Cc" aria-label="Cc"><input id="rsub" value="${esc(d.subject)}" aria-label="Subject">
+   <textarea id="rbody" aria-label="Quote request">${esc(d.text)}</textarea>
+   <div class="row"><span class="note" id="rstat">Nothing is sent until you press Send.</span><span><button class="btn" id="rsave">Save draft to Gmail</button> <button class="btn primary" id="rsend">Send…</button></span></div>`;
+  wireHL($("#rbody"));
+  const save=async()=>{const r=await fetch("/api/draft",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({threadId:th.id,draftId,to:$("#rto").value,cc:$("#rcc").value,subject:$("#rsub").value,body:$("#rbody").value})});
+    const j=await r.json();if(!r.ok)throw new Error(j.error||"Gmail refused the draft");draftId=j.draftId;return j};
+  $("#rsave").onclick=async()=>{$("#rstat").textContent="Saving…";try{await save();$("#rstat").textContent="Saved in Gmail at "+new Date().toLocaleTimeString()+". Not sent."}catch(e){$("#rstat").textContent="Could not save: "+e.message}};
+  $("#rsend").onclick=()=>{const b=$("#rsend");
+    if(!b.dataset.arm){b.dataset.arm=1;b.textContent="Yes, send now";b.classList.add("danger");$("#rstat").textContent="This sends a real email to: "+$("#rto").value+($("#rcc").value?" (Cc "+$("#rcc").value+")":"");return}
+    b.disabled=true;$("#rstat").textContent="Sending…";
+    save().then(j=>fetch("/api/send",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({draftId:j.draftId})}))
+     .then(r=>r.json().then(j=>{if(!r.ok)throw new Error(j.error||"send failed");$("#rstat").textContent="Sent at "+new Date().toLocaleTimeString()+". Reloading from Gmail…";setTimeout(()=>openPO(cur),1500)}))
+     .catch(e=>{$("#rstat").textContent="Not sent: "+e.message+". Check Gmail before trying again.";b.disabled=false})};
+}
+</script><script>
+function uniq(items){const seen=new Set();return items.map((it,i)=>[it,i]).filter(([it])=>{if(seen.has(it.sku))return false;seen.add(it.sku);return true})}
+function picker(withText,btnLabel,endpoint){
+  const list=uniq(tinfo.items);
+  $("#apbox").innerHTML=list.map(([it,i])=>`<label class="it"><input type="checkbox" value="${i}" checked> <span>${esc(it.product_name)} (SKU ${esc(it.sku)})</span></label>`).join("")+
+   (withText?'<textarea id="apText" placeholder="Paste the vendor\'s alternative from the quote (optional)"></textarea>':"")+
+   `<div><button class="btn primary" id="apGo">${btnLabel}</button> <span class="note" id="apStat"></span></div>`;
+  $("#apGo").onclick=async()=>{
+    const idx=[...document.querySelectorAll("#apbox input:checked")].map(x=>+x.value);
+    if(!idx.length){$("#apStat").textContent="Select at least one item.";return}
+    const w=window.open("","_blank");$("#apStat").textContent="Opening…";
+    try{const r=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({po:cur,items:idx,text:withText?$("#apText").value:""})});
+      const j=await r.json();if(!r.ok||!j.url)throw new Error(j.error||"failed");w.location=j.url;$("#apStat").textContent=""}
+    catch(e){if(w)w.close();$("#apStat").textContent="Could not open: "+e.message+" Is Scout Dev running?"}}}
+$("#bAlt").onclick=()=>picker(true,"Open alternative review","/api/alt-review");
+$("#bPr").onclick=()=>picker(false,"Open price approval review","/api/price-review");
+$("#bAr").onclick=()=>{
+  const i=tinfo,p=new URLSearchParams();
+  p.set("prefill_Placed By",i.procurement_manager_name||"Sara Vargas");p.set("prefill_Action Request Type","Alternate Approval");
+  if(i.order_manager_name)p.set("prefill_Request for",i.order_manager_name);
+  p.set("prefill_Order #",i.order_number);p.set("prefill_Alternate Reason","Out of stock / backordered");p.set("prefill_Alternate Sub-reason","Model unavailable");
+  p.set("prefill_Priority","High");p.set("prefill_Escalation (Y/N)","No");p.set("prefill_Summary/Subject",i.order_number+" | Alternative Approval");
+  if(i.org_name)p.set("prefill_Organization",i.org_name);
+  window.open("https://airtable.com/appnu2ZO4IDLIErUO/shrFlB1YyS0mmyxlA?"+p.toString(),"_blank")};
+</script><script>
+$("#bTd").onclick=async()=>{
+  const box=$("#usbox");box.textContent="Building the confirmation…";
+  try{const r=await fetch("/api/td-confirm",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({po:cur})});
+    const j=await r.json();if(!r.ok)throw new Error(j.error||"failed");
+    const warn=j.card_set?"":" Card last 4 is not set in Scout Dev, so it shows ____.";
+    const rb=$("#rbody");
+    if(rb){rb.value=j.body;rb.dispatchEvent(new Event("input"));box.textContent="Filled the reply box below the vendor email. Nothing is saved or sent yet."+warn}
+    else{box.innerHTML='Confirmation text (no reply box on this order, copy it):'+warn+'<pre style="white-space:pre-wrap;margin:6px 0;font:12.5px/1.5 ui-monospace,Menlo,monospace" id="tdp"></pre><button class="btn" id="tdc">Copy</button>';
+      $("#tdp").textContent=j.body;$("#tdc").onclick=()=>navigator.clipboard.writeText(j.body).then(()=>$("#tdc").textContent="Copied")}
+  }catch(e){box.textContent="Could not build it: "+e.message}};
+$("#bAp").onclick=async()=>{
+  const box=$("#usbox"),w=window.open("","_blank");box.textContent="Generating the Autopilot form…";
+  try{const r=await fetch("/api/autopilot",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({po:cur})});
+    const j=await r.json();if(!r.ok||!j.url)throw new Error(j.error||"failed");w.location=j.url;box.textContent="Opened the Autopilot form in a new tab."}
+  catch(e){if(w)w.close();box.textContent="Could not generate it: "+e.message}};
+</script>

@@ -1,12 +1,21 @@
 """Order lookup and email builders ported from Scout Dev (scout_engine.py, order_confirm_engine.py).
 Logins come from environment variables (Replit Secrets), never from this file."""
-import os, re, time, base64, logging, datetime
+import ast, os, re, time, base64, logging, datetime
 from email.mime.text import MIMEText
 import requests
 
 _allwhere_auth_secret = os.environ.get("ALLWHERE_AUTH", "").strip()
 if _allwhere_auth_secret:
-    if _allwhere_auth_secret.lower().startswith(("basic ", "bearer ")):
+    if _allwhere_auth_secret.startswith(("[", "(")):
+        try:
+            _auth_pair = ast.literal_eval(_allwhere_auth_secret)
+            if not isinstance(_auth_pair, (list, tuple)) or len(_auth_pair) != 2 or not all(isinstance(x, str) for x in _auth_pair):
+                raise ValueError
+            ALLWHERE_AUTH = tuple(_auth_pair)
+            ALLWHERE_AUTH_HEADERS = {}
+        except (ValueError, SyntaxError):
+            raise ValueError("ALLWHERE_AUTH must contain a username/password pair or an Authorization header.") from None
+    elif _allwhere_auth_secret.lower().startswith(("basic ", "bearer ")):
         ALLWHERE_AUTH = None
         ALLWHERE_AUTH_HEADERS = {"Authorization": _allwhere_auth_secret}
     elif ":" in _allwhere_auth_secret:
@@ -28,7 +37,7 @@ def allwhere_auth_kwargs():
 
 
 _ALLWHERE_DEFAULT_BASE = "https://service.production.allwhere.co"
-_allwhere_base = os.environ.get("ALLWHERE_BASE", _ALLWHERE_DEFAULT_BASE).rstrip("/")
+_allwhere_base = os.environ.get("ALLWHERE_BASE", _ALLWHERE_DEFAULT_BASE).strip().strip("'\"").rstrip("/")
 if _allwhere_base.endswith(("/v1", "/v2")):
     _allwhere_base = _allwhere_base[:-3]
 ALLWHERE_BASE = f"{_allwhere_base}/v1"
@@ -133,7 +142,7 @@ def get_order_header(order_number: str) -> dict:
     try:
         r = requests.get(
             f"{ALLWHERE_BASE_V2}/order",
-            auth=ALLWHERE_AUTH,
+            **allwhere_auth_kwargs(),
             params={"orderNumber": po_clean},
             timeout=15,
         )
@@ -198,7 +207,7 @@ def get_order_header(order_number: str) -> dict:
         try:
             org_r = requests.get(
                 f"{ALLWHERE_BASE}/organizations/{org_id}",
-                auth=ALLWHERE_AUTH,
+                **allwhere_auth_kwargs(),
                 timeout=15,
             )
             if org_r.status_code == 200:
@@ -254,7 +263,7 @@ def get_recipient_info(order_number: str) -> dict:
     try:
         r = requests.get(
             f"{ALLWHERE_BASE_V2}/order",
-            auth=ALLWHERE_AUTH,
+            **allwhere_auth_kwargs(),
             params={"orderNumber": po_clean},
             timeout=15,
         )
@@ -479,7 +488,7 @@ def generate_uk_email(order_number: str) -> dict:
         try:
             r = requests.get(
                 f"{ALLWHERE_BASE}/organizations/{org_id}",
-                auth=ALLWHERE_AUTH,
+                **allwhere_auth_kwargs(),
                 timeout=15,
             )
             if r.status_code == 200:
@@ -677,7 +686,7 @@ def generate_eu_email(order_number: str) -> dict:
         try:
             r = requests.get(
                 f"{ALLWHERE_BASE}/organizations/{org_id}",
-                auth=ALLWHERE_AUTH,
+                **allwhere_auth_kwargs(),
                 timeout=15,
             )
             if r.status_code == 200:
@@ -840,7 +849,7 @@ def generate_us_email(order_number: str) -> dict:
         try:
             r = requests.get(
                 f"{ALLWHERE_BASE}/organizations/{org_id}",
-                auth=ALLWHERE_AUTH,
+                **allwhere_auth_kwargs(),
                 timeout=15,
             )
             if r.status_code == 200:
@@ -1159,7 +1168,7 @@ def get_item_details(variant_id: str, quantity: int) -> dict:
     try:
         r3 = requests.get(
             f"{ALLWHERE_BASE}/product-variant/{variant_id}",
-            auth=ALLWHERE_AUTH,
+            **allwhere_auth_kwargs(),
             timeout=15,
         )
     except requests.RequestException as e:
@@ -1198,7 +1207,7 @@ def get_item_details(variant_id: str, quantity: int) -> dict:
     try:
         r4 = requests.get(
             f"{ALLWHERE_BASE}/product/{product_id}",
-            auth=ALLWHERE_AUTH,
+            **allwhere_auth_kwargs(),
             timeout=15,
         )
         if r4.status_code == 200:
@@ -1213,7 +1222,7 @@ def get_item_details(variant_id: str, quantity: int) -> dict:
     try:
         r5 = requests.get(
             f"{ALLWHERE_BASE}/product-variant-attribute",
-            auth=ALLWHERE_AUTH,
+            **allwhere_auth_kwargs(),
             params={"productVariantId": variant_id},
             timeout=15,
         )
@@ -1241,10 +1250,9 @@ def get_item_details(variant_id: str, quantity: int) -> dict:
     return result
 
 # ── from order_confirm_engine.py ──
-ALLWHERE_BASE_V2 = "https://service.production.allwhere.co/v2"
 
 def _clean_po(po):
-    return re.sub(r"\s*\(\d+\)\s*$", "", po.strip())
+    return clean_po(po)
 
 def fetch_full_order(order_number):
     """Fetch everything needed from the Allwhere v2 order in one call."""
@@ -1252,7 +1260,7 @@ def fetch_full_order(order_number):
     try:
         r = requests.get(
             f"{ALLWHERE_BASE_V2}/order",
-            auth=ALLWHERE_AUTH,
+            **allwhere_auth_kwargs(),
             params={"orderNumber": po},
             timeout=15,
         )
@@ -1347,7 +1355,7 @@ def _fetch_billing_address(org_id):
     try:
         r = requests.get(
             f"{ALLWHERE_BASE}/billing-address",
-            auth=ALLWHERE_AUTH,
+            **allwhere_auth_kwargs(),
             params={"organizationId": org_id},
             timeout=15,
         )
@@ -1369,7 +1377,7 @@ def _fetch_billing_address(org_id):
 
         r2 = requests.get(
             f"{ALLWHERE_BASE}/address/{addr_id}",
-            auth=ALLWHERE_AUTH,
+            **allwhere_auth_kwargs(),
             timeout=15,
         )
         if r2.status_code != 200:

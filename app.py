@@ -9,7 +9,7 @@ from flask import Flask, jsonify, request, Response, send_from_directory
 from gmail_auth import get_gmail_service
 import requests
 from scout_port import (fetch_full_order, build_confirmation_email, get_order_info_for_ticket,
-                        generate_auto_quote_email, ALLWHERE_AUTH)
+                        generate_auto_quote_email, ALLWHERE_BASE_V2, allwhere_auth_kwargs)
 
 app = Flask(__name__)
 _svc = {}
@@ -72,7 +72,7 @@ def index():
 def order(po):
     o = fetch_full_order(po)
     if "error" not in o:
-        r = requests.get("https://service.production.allwhere.co/v2/order", auth=ALLWHERE_AUTH,
+        r = requests.get(f"{ALLWHERE_BASE_V2}/order", **allwhere_auth_kwargs(),
                          params={"orderNumber": o["order_number"]}, timeout=15).json()["items"][0]
         o["status"] = r.get("status") or ""
         import re as _re

@@ -1,0 +1,1 @@
+- [Imported configuration quoting](imported-config-quoting.md) — desktop settings can carry literal quotes into secrets; diagnose through sanitized status checks.

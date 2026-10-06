@@ -1272,6 +1272,7 @@ def fetch_full_order(order_number):
 
     order = r.json()["items"][0]
     rec = order.get("recipient") or {}
+    confirmation_phone = (rec.get("phoneNumber") or "").strip()
     rec_addr = rec.get("address") or {}
     org = order.get("organization") or {}
     purchaser = order.get("purchaser") or {}
@@ -1327,6 +1328,7 @@ def fetch_full_order(order_number):
         "org_name": (org.get("name") or "").strip(),
         "org_id": (org.get("id") or "").strip(),
         "shipping_type": (ship.get("name") or "").strip(),
+        "confirmation_phone": confirmation_phone,
         "has_autopilot": has_autopilot,
         "autopilot_info": autopilot_info,
         "order_items": order_items,

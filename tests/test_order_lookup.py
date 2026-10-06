@@ -41,6 +41,18 @@ class OrderLookupTests(unittest.TestCase):
         for call in get.call_args_list:
             self.assertEqual(call.kwargs["params"], {"orderNumber": "161664-1"})
 
+    def test_confirmation_phone_comes_from_recipient(self):
+        upstream = Mock(status_code=200)
+        upstream.json.return_value = {"items": [{"recipient": {"phoneNumber": "+61400000001"}}]}
+        with patch.object(scout_port.requests, "get", return_value=upstream):
+            self.assertEqual(scout_port.fetch_full_order("123456-1-TEST")["confirmation_phone"], "+61400000001")
+
+    def test_confirmation_does_not_use_synthetic_shipping_phone(self):
+        upstream = Mock(status_code=200)
+        upstream.json.return_value = {"items": [{}]}
+        with patch.object(scout_port.requests, "get", return_value=upstream):
+            self.assertEqual(scout_port.fetch_full_order("123456-1-TEST")["confirmation_phone"], "")
+
 
 if __name__ == "__main__":
     unittest.main()

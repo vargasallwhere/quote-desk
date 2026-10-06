@@ -1,1 +1,2 @@
 - [Imported configuration quoting](imported-config-quoting.md) — desktop settings can carry literal quotes into secrets; diagnose through sanitized status checks.
+- [Follow-up confirmation phone](confirmation-phone-source.md) — use the current order’s recipient-info phone, never a generic or previous-order number.

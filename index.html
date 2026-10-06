@@ -143,11 +143,11 @@ function bar(){
   $("#refresh").onclick=()=>{if(cur)openPO(cur)};
 }
 async function openPO(po){
-  cur=po;const my=++req;bar();try{localStorage.setItem("qd_last",po)}catch(e){}$("#po").textContent=po;
+  cur=po;order=null;const my=++req;bar();try{localStorage.setItem("qd_last",po)}catch(e){}$("#po").textContent=po;
   $("#usBtns").hidden=true;$("#usbox").innerHTML="";$("#ap").hidden=true;$("#cb").hidden=true;$("#cto").hidden=true;$("#apbox").innerHTML="";tinfo=null;$("#order").innerHTML='<p class="empty">Loading…</p>';$("#thread").innerHTML='<p class="empty">Loading from Gmail…</p>';$("#sync").textContent="";
-  fetch("/api/order/"+encodeURIComponent(po)).then(r=>r.json()).then(o=>{if(my===req){order=o;showOrder(o)}}).catch(e=>{if(my===req)$("#order").innerHTML='<p class="err">'+esc(e)+'</p>'});
+  const orderReady=fetch("/api/order/"+encodeURIComponent(po)).then(r=>r.json()).then(o=>{if(my===req){order=o;showOrder(o)}}).catch(e=>{if(my===req)$("#order").innerHTML='<p class="err">'+esc(e)+'</p>'});
   fetch("/api/ticket-info/"+encodeURIComponent(po)).then(r=>r.json()).then(t=>{if(my===req&&!t.error){tinfo=t;$("#ap").hidden=false;showCountry(t.shipping_country);showCto(t)}}).catch(()=>{});
-  fetch("/api/threads/"+encodeURIComponent(po)).then(r=>r.json()).then(t=>{if(my===req)showThreads(t)}).catch(e=>{if(my===req)$("#thread").innerHTML='<p class="err">'+esc(e)+'</p>'});
+  fetch("/api/threads/"+encodeURIComponent(po)).then(r=>r.json()).then(async t=>{await orderReady;if(my===req)showThreads(t)}).catch(e=>{if(my===req)$("#thread").innerHTML='<p class="err">'+esc(e)+'</p>'});
 }
 function showOrder(o){
   if(o.error){$("#order").innerHTML='<p class="err">'+esc(o.error)+'</p>';return}
@@ -195,6 +195,16 @@ bar();if(cur)openPO(cur);else{$("#order").innerHTML='<p class="empty">Type a PO 
 <script>
 const ME="sara@allwhere.co";
 function addrs(...l){const seen=new Set(),out=[];l.join(",").split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(x=>x.trim()).filter(Boolean).forEach(a=>{const e=(a.match(/<(.+)>/)||[0,a])[1].toLowerCase();if(e!==ME&&!seen.has(e)){seen.add(e);out.push(a)}});return out.join(", ")}
+function confirmationPhone(currentOrder){
+  if(!currentOrder||currentOrder.error||!currentOrder.recipient)return "";
+  return (currentOrder.confirmation_phone===undefined?currentOrder.recipient.phone||"":currentOrder.confirmation_phone).trim();
+}
+function confirmationBody(currentOrder,draftMsg){
+  if(draftMsg)return draftMsg.text.split(/\r?\nOn .* wrote:/)[0].trim();
+  if(!currentOrder||currentOrder.error||!currentOrder.recipient)return "";
+  const phone=confirmationPhone(currentOrder);
+  return "Thank you. This order is confirmed, please process it.\n\n"+(phone?phone+"\n\n":"")+"Best,\nSara";
+}
 function composer(th,drafts){
   const msgs=th.messages,draftMsg=[...msgs].reverse().find(m=>m.labels.includes("DRAFT"));
   const last=[...msgs].reverse().find(m=>!m.labels.includes("DRAFT"));
@@ -203,9 +213,8 @@ function composer(th,drafts){
   const hasQuote=last.attachments.some(a=>/pdf/i.test(a.type)||/\.pdf$/i.test(a.name));
   if(last.labels.includes("SENT")){$("#reply").innerHTML='<span class="note">You replied last. Waiting on the vendor.</span>';return}
   if(!hasQuote){$("#reply").innerHTML='<span class="note">The vendor\'s latest message has no quote attached, so no confirmation is due yet.</span>';return}
-  const ph=order&&order.recipient?order.recipient.phone:"";
   const to=draftMsg?draftMsg.to:addrs(inbound.reply_to||inbound.from),cc=draftMsg?draftMsg.cc:addrs(inbound.to,inbound.cc).split(", ").filter(a=>!to.includes(a)).join(", ");
-  const body=draftMsg?draftMsg.text.split(/\r?\nOn .* wrote:/)[0].trim():"Thank you. This order is confirmed, please process it.\n\n"+(ph?ph+"\n\n":"")+"Best,\nSara";
+  const body=confirmationBody(order,draftMsg);
   const fresh=(last.text||"").split(/\r?\n(?:From:|On .*wrote:|-{3,} ?Original)/)[0];
   const alt=/out of stock|not (currently )?(in stock|available)|unavailable|no stock|back ?order|alternative|closest|instead|in lieu|substitut/i.test(fresh);
   const kind=alt?"alt":"instock";
@@ -214,7 +223,8 @@ function composer(th,drafts){
   let draftId=draftMsg?drafts[draftMsg.id]:null;
   const subj=/^re:/i.test(last.subject)?last.subject:"Re: "+last.subject;
   const body2=draftMsg||kind==="instock"?body:"";
-  $("#reply").innerHTML=`<div class="note" style="margin-bottom:4px">${verdict}</div><label>${draftId?"YOUR EXISTING GMAIL DRAFT (editing it, not making a second)":"REPLY"}</label>
+  const recipientNote=!draftMsg&&(!order||order.error||!order.recipient)?'<div class="note">Recipient details could not be loaded. No confirmation was prefilled; refresh before confirming.</div>':!draftMsg&&!confirmationPhone(order)?'<div class="note">The recipient has no phone number. Check the recipient information before sending.</div>':"";
+  $("#reply").innerHTML=`${recipientNote}<div class="note" style="margin-bottom:4px">${verdict}</div><label>${draftId?"YOUR EXISTING GMAIL DRAFT (editing it, not making a second)":"REPLY"}</label>
    <input id="rto" value="${esc(to)}" aria-label="To"><input id="rcc" value="${esc(cc)}" placeholder="Cc" aria-label="Cc">
    <textarea id="rbody" aria-label="Reply">${esc(body2)}</textarea>
    <div class="row"><span class="note" id="rstat">Nothing is sent until you press Send.</span><span><button class="btn" id="rsave">Save draft to Gmail</button> <button class="btn primary" id="rsend">Send…</button></span></div>`;

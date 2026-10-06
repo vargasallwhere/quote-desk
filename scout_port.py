@@ -4,7 +4,35 @@ import os, re, time, base64, logging, datetime
 from email.mime.text import MIMEText
 import requests
 
-ALLWHERE_AUTH = (os.environ.get("ALLWHERE_USER", ""), os.environ.get("ALLWHERE_PASS", ""))
+_allwhere_auth_secret = os.environ.get("ALLWHERE_AUTH", "").strip()
+if _allwhere_auth_secret:
+    if _allwhere_auth_secret.lower().startswith(("basic ", "bearer ")):
+        ALLWHERE_AUTH = None
+        ALLWHERE_AUTH_HEADERS = {"Authorization": _allwhere_auth_secret}
+    elif ":" in _allwhere_auth_secret:
+        ALLWHERE_AUTH = tuple(_allwhere_auth_secret.split(":", 1))
+        ALLWHERE_AUTH_HEADERS = {}
+    else:
+        ALLWHERE_AUTH = None
+        ALLWHERE_AUTH_HEADERS = {"Authorization": _allwhere_auth_secret}
+else:
+    ALLWHERE_AUTH = (os.environ.get("ALLWHERE_USER", ""), os.environ.get("ALLWHERE_PASS", ""))
+    ALLWHERE_AUTH_HEADERS = {}
+
+
+def allwhere_auth_kwargs():
+    """Return request kwargs for the configured Allwhere auth secret or legacy credentials."""
+    if ALLWHERE_AUTH_HEADERS:
+        return {"headers": ALLWHERE_AUTH_HEADERS.copy()}
+    return {"auth": ALLWHERE_AUTH}
+
+
+_ALLWHERE_DEFAULT_BASE = "https://service.production.allwhere.co"
+_allwhere_base = os.environ.get("ALLWHERE_BASE", _ALLWHERE_DEFAULT_BASE).rstrip("/")
+if _allwhere_base.endswith(("/v1", "/v2")):
+    _allwhere_base = _allwhere_base[:-3]
+ALLWHERE_BASE = f"{_allwhere_base}/v1"
+ALLWHERE_BASE_V2 = f"{_allwhere_base}/v2"
 
 
 def cache_get(*_):  # Scout's disk cache is not used here
@@ -17,8 +45,6 @@ def cache_set(*_):
 
 PS_AUTH = {"Authorization": "Basic " + base64.b64encode(
     f'{os.environ.get("PS_USER", "")}:{os.environ.get("PS_PASS", "")}'.encode()).decode()}
-
-ALLWHERE_BASE = "https://service.production.allwhere.co/v1"
 
 PS_BASE    = "https://product.allwhere.co/v1"
 
@@ -35,8 +61,6 @@ EU_COUNTRIES = {
 }
 
 UK_COUNTRIES = {"united kingdom", "gb", "uk", "great britain"}
-
-ALLWHERE_BASE_V2 = "https://service.production.allwhere.co/v2"
 
 def _extract_allwhere_mpn(description_html: str) -> str:
     """Pull the first <li> text from an Allwhere product description.

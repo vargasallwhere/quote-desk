@@ -34,6 +34,7 @@ class OrderLookupTests(unittest.TestCase):
             response = app.app.test_client().get("/api/order/161664-1-LANG")
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
         self.assertEqual(response.json["order_number"], "161664-1")
         self.assertEqual(response.json["status"], "Test status")
         self.assertEqual(len(response.json["order_items"]), 1)

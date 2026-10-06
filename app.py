@@ -9,7 +9,8 @@ from flask import Flask, jsonify, request, Response, send_from_directory
 from gmail_auth import get_gmail_service
 import requests
 from scout_port import (fetch_full_order, build_confirmation_email, get_order_info_for_ticket,
-                        generate_auto_quote_email, ALLWHERE_BASE_V2, allwhere_auth_kwargs)
+                        generate_auto_quote_email, ALLWHERE_BASE_V2, allwhere_auth_kwargs,
+                        fetch_order_status)
 
 app = Flask(__name__)
 _svc = {}
@@ -67,6 +68,19 @@ def gmail_error(e):
 def index():
     return send_from_directory(os.path.dirname(__file__), "index.html")
 
+@app.after_request
+def fresh_order_responses(response):
+    if request.path.startswith(("/api/order/", "/api/order-status/")):
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
+
+@app.get("/api/order-status/<po>")
+def order_status(po):
+    result = fetch_order_status(po)
+    return jsonify(result), (502 if "error" in result else 200)
+
 
 @app.get("/api/order/<po>")
 def order(po):
@@ -75,6 +89,7 @@ def order(po):
         r = requests.get(f"{ALLWHERE_BASE_V2}/order", **allwhere_auth_kwargs(),
                          params={"orderNumber": o["order_number"]}, timeout=15).json()["items"][0]
         o["status"] = r.get("status") or ""
+        o["status_checked_at"] = int(time.time())
         import re as _re
         devices, lines = {}, []
         for oi in r.get("orderItems", []):

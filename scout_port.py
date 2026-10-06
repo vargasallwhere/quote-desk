@@ -1254,6 +1254,36 @@ def get_item_details(variant_id: str, quantity: int) -> dict:
 def _clean_po(po):
     return clean_po(po)
 
+def fetch_order_status(order_number):
+    """Read the exact order's current status without billing, catalog, or Gmail calls."""
+    po = re.sub(r"\s*\(\d+\)\s*$", "", order_number.strip())
+    try:
+        response = requests.get(
+            f"{ALLWHERE_BASE_V2}/order",
+            **allwhere_auth_kwargs(),
+            params={"orderNumber": po},
+            timeout=15,
+        )
+        if response.status_code != 200:
+            return {"error": f"Allwhere status lookup failed (HTTP {response.status_code})."}
+        items = response.json().get("items") or []
+        exact = [item for item in items if (item.get("orderNumber") or "").casefold() == po.casefold()]
+        if not exact:
+            exact = [item for item in items if clean_po(item.get("orderNumber") or "").casefold() == po.casefold()]
+        if len(exact) != 1:
+            return {"error": "Could not identify one exact order for the status check."}
+        order = exact[0]
+        if not order.get("status"):
+            return {"error": "Allwhere did not provide an order status."}
+        return {
+            "order_number": order["orderNumber"],
+            "status": order["status"],
+            "status_updated_at": (order.get("lastOrderStatusTransition") or {}).get("createdAt"),
+            "status_checked_at": int(time.time()),
+        }
+    except (requests.RequestException, ValueError, TypeError, AttributeError):
+        return {"error": "Could not refresh the order status from Allwhere."}
+
 def fetch_full_order(order_number):
     """Fetch everything needed from the Allwhere v2 order in one call."""
     po = _clean_po(order_number)

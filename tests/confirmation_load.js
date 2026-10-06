@@ -11,6 +11,7 @@ async function runTests(html) {
     const context = {
       cur: "", req: 0, order: { recipient: { phone: "old-phone" } }, tinfo: null,
       bar() {}, localStorage: { setItem() {} }, esc: String,
+      stopStatusUpdates() {}, startStatusUpdates() {},
       $(key) { if (!elements.has(key)) elements.set(key, {}); return elements.get(key); },
       showOrder() {}, showCountry() {}, showCto() {},
       fetch(url) { return new Promise((resolve, reject) => pending.set(url, { resolve, reject })); },

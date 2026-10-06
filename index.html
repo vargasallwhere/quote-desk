@@ -85,7 +85,7 @@ select{padding:5px;border-radius:6px;border:1px solid var(--line);background:var
 </div>
 <script>
 let cur=decodeURIComponent(location.hash.slice(1));try{cur=cur||localStorage.getItem("qd_last")||""}catch(e){}
-let req=0,order=null,tinfo=null;
+let req=0,order=null,tinfo=null,statusTimer=null,statusInFlight=null;
 
 
 const FLAGS={"united states":"🇺🇸","us":"🇺🇸","usa":"🇺🇸","united kingdom":"🇬🇧","uk":"🇬🇧","gb":"🇬🇧","great britain":"🇬🇧","germany":"🇩🇪","france":"🇫🇷","netherlands":"🇳🇱","spain":"🇪🇸","italy":"🇮🇹","belgium":"🇧🇪","ireland":"🇮🇪","austria":"🇦🇹","poland":"🇵🇱","portugal":"🇵🇹","sweden":"🇸🇪","denmark":"🇩🇰","finland":"🇫🇮","norway":"🇳🇴","switzerland":"🇨🇭","czech republic":"🇨🇿","czechia":"🇨🇿","romania":"🇷🇴","hungary":"🇭🇺","luxembourg":"🇱🇺","greece":"🇬🇷","croatia":"🇭🇷","slovakia":"🇸🇰","slovenia":"🇸🇮","bulgaria":"🇧🇬","estonia":"🇪🇪","latvia":"🇱🇻","lithuania":"🇱🇹","canada":"🇨🇦","australia":"🇦🇺","japan":"🇯🇵","india":"🇮🇳","singapore":"🇸🇬","mexico":"🇲🇽","brazil":"🇧🇷"};
@@ -142,10 +142,49 @@ function bar(){
   $("#add").onkeydown=e=>{if(e.key==="Enter"&&e.target.value.trim())openPO(e.target.value.trim())};
   $("#refresh").onclick=()=>{if(cur)openPO(cur)};
 }
+function statusText(value){
+  return (value||"—").toLowerCase().replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase());
+}
+function statusCheckedText(checkedAt){
+  return "Checked "+new Date(checkedAt*1000).toLocaleTimeString();
+}
+function stopStatusUpdates(){
+  if(statusTimer!==null)clearInterval(statusTimer);
+  statusTimer=null;
+}
+function startStatusUpdates(po,my){
+  stopStatusUpdates();
+  statusTimer=setInterval(()=>{if(!document.hidden&&my===req)refreshOrderStatus(po,my)},15000);
+}
+async function refreshOrderStatus(po=cur,my=req){
+  if(!order||order.error||document.hidden||my!==req||po!==cur)return;
+  if(statusInFlight&&statusInFlight.my===my)return;
+  const running={my,po};statusInFlight=running;
+  try{
+    const response=await fetch("/api/order-status/"+encodeURIComponent(po),{cache:"no-store"});
+    const data=await response.json();
+    if(my!==req||po!==cur)return;
+    if(!response.ok||data.error||!data.status)throw new Error("Status unavailable");
+    order.status=data.status;order.status_checked_at=data.status_checked_at;
+    const badge=$("#order-status"),checked=$("#status-check");
+    if(badge){badge.textContent=statusText(data.status);badge.title="Current status from Allwhere"}
+    if(checked)checked.textContent=statusCheckedText(data.status_checked_at);
+  }catch(e){
+    if(my!==req||po!==cur)return;
+    const badge=$("#order-status"),checked=$("#status-check");
+    if(badge)badge.title="Last known status; the latest check failed";
+    if(checked)checked.textContent="Refresh failed; showing last known status.";
+  }finally{
+    if(statusInFlight===running)statusInFlight=null;
+  }
+}
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshOrderStatus()});
+window.addEventListener("focus",()=>refreshOrderStatus());
 async function openPO(po){
+  stopStatusUpdates();
   cur=po;order=null;const my=++req;bar();try{localStorage.setItem("qd_last",po)}catch(e){}$("#po").textContent=po;
   $("#usBtns").hidden=true;$("#usbox").innerHTML="";$("#ap").hidden=true;$("#cb").hidden=true;$("#cto").hidden=true;$("#apbox").innerHTML="";tinfo=null;$("#order").innerHTML='<p class="empty">Loading…</p>';$("#thread").innerHTML='<p class="empty">Loading from Gmail…</p>';$("#sync").textContent="";
-  const orderReady=fetch("/api/order/"+encodeURIComponent(po)).then(r=>r.json()).then(o=>{if(my===req){order=o;showOrder(o)}}).catch(e=>{if(my===req)$("#order").innerHTML='<p class="err">'+esc(e)+'</p>'});
+  const orderReady=fetch("/api/order/"+encodeURIComponent(po),{cache:"no-store"}).then(r=>r.json()).then(o=>{if(my===req){order=o;showOrder(o);if(!o.error)startStatusUpdates(po,my)}}).catch(e=>{if(my===req)$("#order").innerHTML='<p class="err">'+esc(e)+'</p>'});
   fetch("/api/ticket-info/"+encodeURIComponent(po)).then(r=>r.json()).then(t=>{if(my===req&&!t.error){tinfo=t;$("#ap").hidden=false;showCountry(t.shipping_country);showCto(t)}}).catch(()=>{});
   fetch("/api/threads/"+encodeURIComponent(po)).then(r=>r.json()).then(async t=>{await orderReady;if(my===req)showThreads(t)}).catch(e=>{if(my===req)$("#thread").innerHTML='<p class="err">'+esc(e)+'</p>'});
 }
@@ -153,7 +192,7 @@ function showOrder(o){
   if(o.error){$("#order").innerHTML='<p class="err">'+esc(o.error)+'</p>';return}
   const r=o.recipient,items=o.order_items.map(i=>`${i.qty} × ${hl(i.name)}<small class="mono">${hl(i.mpn)}</small>`).join("<br>")||"—";
   $("#order").innerHTML=`<dl class="facts">
-   <div><dt>Order status</dt><dd><span class="status">${esc((o.status||"—").toLowerCase().replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase()))}</span></dd></div>
+   <div><dt>Order status</dt><dd><span class="status" id="order-status" title="Status from Allwhere">${esc(statusText(o.status))}</span><small id="status-check" aria-live="polite">${esc(statusCheckedText(o.status_checked_at||Date.now()/1000))}</small></dd></div>
    <div><dt>Customer</dt><dd>${esc(o.org_name)}<small>${esc(o.purchaser.name)}</small></dd></div>
    <div><dt>Items</dt><dd>${items}</dd></div>
    <div><dt>Ship to</dt><dd>${esc(r.first_name)} ${esc(r.last_name)}<small>${esc([r.address1,r.address2,r.city,r.state,r.zip,r.country].filter(Boolean).join(", "))}</small><small class="mono">${esc(r.phone)}</small></dd></div>

@@ -9,4 +9,4 @@ Order status must refresh independently of Gmail threads and the reply composer.
 
 **How to apply:** Read live Allwhere status for the selected order, preserve draft edits, discard late results for a different selected order, and clearly label the last-known status if a refresh fails.
 
-Validate initial loading and subsequent refreshes against the same exact order identity. Before claiming a broad status issue is resolved, reproduce a reported mismatch against the user's expected status; do not assume polling or a successful service response proves correctness.
+Validate initial loading and subsequent refreshes against the same exact order identity. Derive the initial status and other order facts from one verified source snapshot: independent search responses can disagree around transitions even when both are fresh. Before claiming a broad status issue is resolved, reproduce a reported mismatch against the user's expected status; do not assume polling or a successful service response proves correctness.

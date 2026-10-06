@@ -11,3 +11,7 @@ channel = "stable-25_05"
 [deployment]
 deploymentTarget = "cloudrun"
 run = "python3 app.py"
+
+[[ports]]
+localPort = 5000
+externalPort = 80

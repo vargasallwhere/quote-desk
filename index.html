@@ -146,7 +146,7 @@ function statusText(value){
   return (value||"—").toLowerCase().replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase());
 }
 function statusCheckedText(checkedAt){
-  return "Checked "+new Date(checkedAt*1000).toLocaleTimeString();
+  return checkedAt?"Checked "+new Date(checkedAt*1000).toLocaleTimeString():"Status check unavailable.";
 }
 function stopStatusUpdates(){
   if(statusTimer!==null)clearInterval(statusTimer);
@@ -161,10 +161,12 @@ async function refreshOrderStatus(po=cur,my=req){
   if(statusInFlight&&statusInFlight.my===my)return;
   const running={my,po};statusInFlight=running;
   try{
-    const response=await fetch("/api/order-status/"+encodeURIComponent(po),{cache:"no-store"});
+    const resolvedPo=order.order_number||po;
+    const response=await fetch("/api/order-status/"+encodeURIComponent(resolvedPo),{cache:"no-store"});
     const data=await response.json();
     if(my!==req||po!==cur)return;
     if(!response.ok||data.error||!data.status)throw new Error("Status unavailable");
+    if(!data.order_number||data.order_number.toLowerCase()!==resolvedPo.toLowerCase())throw new Error("Wrong order returned");
     order.status=data.status;order.status_checked_at=data.status_checked_at;
     const badge=$("#order-status"),checked=$("#status-check");
     if(badge){badge.textContent=statusText(data.status);badge.title="Current status from Allwhere"}
@@ -190,9 +192,10 @@ async function openPO(po){
 }
 function showOrder(o){
   if(o.error){$("#order").innerHTML='<p class="err">'+esc(o.error)+'</p>';return}
+  $("#po").textContent=o.order_number||cur;
   const r=o.recipient,items=o.order_items.map(i=>`${i.qty} × ${hl(i.name)}<small class="mono">${hl(i.mpn)}</small>`).join("<br>")||"—";
   $("#order").innerHTML=`<dl class="facts">
-   <div><dt>Order status</dt><dd><span class="status" id="order-status" title="Status from Allwhere">${esc(statusText(o.status))}</span><small id="status-check" aria-live="polite">${esc(statusCheckedText(o.status_checked_at||Date.now()/1000))}</small></dd></div>
+   <div><dt>Order status</dt><dd><span class="status" id="order-status" title="Status from Allwhere">${esc(statusText(o.status))}</span><small id="status-check" aria-live="polite">${esc(statusCheckedText(o.status_checked_at))}</small></dd></div>
    <div><dt>Customer</dt><dd>${esc(o.org_name)}<small>${esc(o.purchaser.name)}</small></dd></div>
    <div><dt>Items</dt><dd>${items}</dd></div>
    <div><dt>Ship to</dt><dd>${esc(r.first_name)} ${esc(r.last_name)}<small>${esc([r.address1,r.address2,r.city,r.state,r.zip,r.country].filter(Boolean).join(", "))}</small><small class="mono">${esc(r.phone)}</small></dd></div>

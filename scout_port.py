@@ -123,6 +123,41 @@ def clean_po(po: str) -> str:
     po = re.sub(r"-[A-Z]+$", "", po)
     return po
 
+def fetch_allwhere_order(order_number: str) -> dict:
+    """Resolve one verified order; Allwhere's search results are not exact matches."""
+    po = re.sub(r"\s*\(\d+\)\s*$", "", order_number.strip())
+    if not po:
+        return {"error": "Enter an order number."}
+    try:
+        response = requests.get(
+            f"{ALLWHERE_BASE_V2}/order",
+            **allwhere_auth_kwargs(),
+            params={"orderNumber": po},
+            timeout=15,
+        )
+        if response.status_code != 200:
+            return {"error": f"Allwhere order lookup failed (HTTP {response.status_code})."}
+        payload = response.json()
+        items = payload.get("items") or []
+        if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
+            return {"error": "Allwhere returned an invalid order response."}
+        matches = [
+            item for item in items
+            if (item.get("orderNumber") or "").strip().casefold() == po.casefold()
+        ]
+        # An abbreviated PO is allowed only when it identifies one order.
+        # Never substitute a different suffix for a fully specified PO.
+        if not matches and clean_po(po.upper()) == po.upper():
+            matches = [
+                item for item in items
+                if clean_po((item.get("orderNumber") or "").upper()) == po.upper()
+            ]
+        if len(matches) != 1:
+            return {"error": "Could not identify one exact Allwhere order. Use the full PO number, including its suffix."}
+        return matches[0]
+    except (requests.RequestException, ValueError, TypeError, AttributeError):
+        return {"error": "Could not read the order from Allwhere."}
+
 def _parse_item_seq(order_item_number: str) -> int:
     """'122900-1-3-HIGH' → 3  (line-item sequence number, second-to-last segment)"""
     parts = order_item_number.split("-")
@@ -138,21 +173,10 @@ def get_order_header(order_number: str) -> dict:
               checkout_notes, internal_notes, raw_items: [{productVariantId, quantity}]}
     On error returns {"error": "..."}.
     """
-    po_clean = clean_po(order_number)
-    try:
-        r = requests.get(
-            f"{ALLWHERE_BASE_V2}/order",
-            **allwhere_auth_kwargs(),
-            params={"orderNumber": po_clean},
-            timeout=15,
-        )
-    except requests.RequestException as e:
-        return {"error": f"Allwhere order lookup failed: {e}"}
-
-    if r.status_code != 200 or not r.json().get("items"):
-        return {"error": f"No Allwhere order found for: {po_clean}"}
-
-    order = r.json()["items"][0]
+    order = fetch_allwhere_order(order_number)
+    if "error" in order:
+        return order
+    po_clean = order["orderNumber"]
 
     order_type = order.get("orderType") or {}
     is_depot   = bool(order_type.get("toDepot"))
@@ -259,21 +283,9 @@ def get_recipient_info(order_number: str) -> dict:
     Returns recipient shipping info for a given order (used for BH Photo autofill).
     Data lives in the embedded 'recipient' field of the v2 order response.
     """
-    po_clean = clean_po(order_number)
-    try:
-        r = requests.get(
-            f"{ALLWHERE_BASE_V2}/order",
-            **allwhere_auth_kwargs(),
-            params={"orderNumber": po_clean},
-            timeout=15,
-        )
-    except requests.RequestException as e:
-        return {"error": f"Allwhere order lookup failed: {e}"}
-
-    if r.status_code != 200 or not r.json().get("items"):
-        return {"error": f"No Allwhere order found for: {po_clean}"}
-
-    order = r.json()["items"][0]
+    order = fetch_allwhere_order(order_number)
+    if "error" in order:
+        return order
     rec   = order.get("recipient") or {}
     addr  = rec.get("address") or {}
     org   = order.get("organization") or {}
@@ -1256,51 +1268,27 @@ def _clean_po(po):
 
 def fetch_order_status(order_number):
     """Read the exact order's current status without billing, catalog, or Gmail calls."""
-    po = re.sub(r"\s*\(\d+\)\s*$", "", order_number.strip())
-    try:
-        response = requests.get(
-            f"{ALLWHERE_BASE_V2}/order",
-            **allwhere_auth_kwargs(),
-            params={"orderNumber": po},
-            timeout=15,
-        )
-        if response.status_code != 200:
-            return {"error": f"Allwhere status lookup failed (HTTP {response.status_code})."}
-        items = response.json().get("items") or []
-        exact = [item for item in items if (item.get("orderNumber") or "").casefold() == po.casefold()]
-        if not exact:
-            exact = [item for item in items if clean_po(item.get("orderNumber") or "").casefold() == po.casefold()]
-        if len(exact) != 1:
-            return {"error": "Could not identify one exact order for the status check."}
-        order = exact[0]
-        if not order.get("status"):
-            return {"error": "Allwhere did not provide an order status."}
-        return {
-            "order_number": order["orderNumber"],
-            "status": order["status"],
-            "status_updated_at": (order.get("lastOrderStatusTransition") or {}).get("createdAt"),
-            "status_checked_at": int(time.time()),
-        }
-    except (requests.RequestException, ValueError, TypeError, AttributeError):
-        return {"error": "Could not refresh the order status from Allwhere."}
+    order = fetch_allwhere_order(order_number)
+    if "error" in order:
+        return order
+    if not order.get("status"):
+        return {"error": "Allwhere did not provide an order status."}
+    return {
+        "order_number": order["orderNumber"],
+        "status": order["status"],
+        "status_updated_at": (order.get("lastOrderStatusTransition") or {}).get("createdAt"),
+        "status_checked_at": int(time.time()),
+    }
 
 def fetch_full_order(order_number):
     """Fetch everything needed from the Allwhere v2 order in one call."""
-    po = _clean_po(order_number)
-    try:
-        r = requests.get(
-            f"{ALLWHERE_BASE_V2}/order",
-            **allwhere_auth_kwargs(),
-            params={"orderNumber": po},
-            timeout=15,
-        )
-    except requests.RequestException as e:
-        return {"error": f"Allwhere lookup failed: {e}"}
-
-    if r.status_code != 200 or not r.json().get("items"):
-        return {"error": f"No Allwhere order found for: {po}"}
-
-    order = r.json()["items"][0]
+    order = fetch_allwhere_order(order_number)
+    if "error" in order:
+        return order
+    if not order.get("status"):
+        return {"error": "Allwhere did not provide an order status."}
+    po = order["orderNumber"]
+    checked_at = int(time.time())
     rec = order.get("recipient") or {}
     confirmation_phone = (rec.get("phoneNumber") or "").strip()
     rec_addr = rec.get("address") or {}
@@ -1353,8 +1341,31 @@ def fetch_full_order(order_number):
             "price": float(snap.get("price") or 0),
         })
 
+    # Status, approvals, warranty, and recipient all come from this same record.
+    devices, lines = {}, []
+    for oi in order.get("orderItems", []):
+        snap = oi.get("productVariantSnapshot") or {}
+        name = snap.get("title") or snap.get("productName") or ""
+        plan = oi.get("protectionPlan")
+        if plan:
+            key = (name, plan)
+            devices[key] = devices.get(key, 0) + int(oi.get("quantity") or 1)
+        elif re.search(r"applecare|warranty|protection|service agreement", name, re.I):
+            lines.append({"name": name, "sku": str(snap.get("sku", "")),
+                          "qty": int(oi.get("quantity") or 1),
+                          "price": float(snap.get("price") or 0)})
+
     return {
         "order_number": po,
+        "status": order["status"],
+        "status_checked_at": checked_at,
+        "status_updated_at": (order.get("lastOrderStatusTransition") or {}).get("createdAt"),
+        "warranty": {
+            "devices": [{"name": key[0], "plan": key[1], "qty": qty} for key, qty in devices.items()],
+            "lines": lines,
+        },
+        "color_swap_approved": bool(order.get("deviceColorSwapApproved")),
+        "lead_time_approved": bool(order.get("flexibleLeadTimeApproved")),
         "org_name": (org.get("name") or "").strip(),
         "org_id": (org.get("id") or "").strip(),
         "shipping_type": (ship.get("name") or "").strip(),

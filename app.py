@@ -9,8 +9,7 @@ from flask import Flask, jsonify, request, Response, send_from_directory
 from gmail_auth import get_gmail_service
 import requests
 from scout_port import (fetch_full_order, build_confirmation_email, get_order_info_for_ticket,
-                        generate_auto_quote_email, ALLWHERE_BASE_V2, allwhere_auth_kwargs,
-                        fetch_order_status)
+                        generate_auto_quote_email, fetch_order_status)
 
 app = Flask(__name__)
 _svc = {}
@@ -70,7 +69,7 @@ def index():
 
 @app.after_request
 def fresh_order_responses(response):
-    if request.path.startswith(("/api/order/", "/api/order-status/")):
+    if request.path == "/" or request.path.startswith(("/api/order/", "/api/order-status/")):
         response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"
     return response
@@ -85,27 +84,7 @@ def order_status(po):
 @app.get("/api/order/<po>")
 def order(po):
     o = fetch_full_order(po)
-    if "error" not in o:
-        r = requests.get(f"{ALLWHERE_BASE_V2}/order", **allwhere_auth_kwargs(),
-                         params={"orderNumber": o["order_number"]}, timeout=15).json()["items"][0]
-        o["status"] = r.get("status") or ""
-        o["status_checked_at"] = int(time.time())
-        import re as _re
-        devices, lines = {}, []
-        for oi in r.get("orderItems", []):
-            snap = oi.get("productVariantSnapshot") or {}
-            name = snap.get("title") or snap.get("productName") or ""
-            plan = oi.get("protectionPlan")
-            if plan:
-                k = (name, plan)
-                devices[k] = devices.get(k, 0) + int(oi.get("quantity") or 1)
-            elif _re.search(r"applecare|warranty|protection|service agreement", name, _re.I):
-                lines.append({"name": name, "sku": str(snap.get("sku", "")), "qty": int(oi.get("quantity") or 1),
-                              "price": float(snap.get("price") or 0)})
-        o["warranty"] = {"devices": [{"name": k[0], "plan": k[1], "qty": q} for k, q in devices.items()], "lines": lines}
-        o["color_swap_approved"] = bool(r.get("deviceColorSwapApproved"))
-        o["lead_time_approved"] = bool(r.get("flexibleLeadTimeApproved"))
-    return jsonify(o)
+    return jsonify(o), (502 if "error" in o else 200)
 
 
 @app.get("/api/threads/<po>")

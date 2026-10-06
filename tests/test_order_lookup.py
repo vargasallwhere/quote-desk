@@ -18,10 +18,11 @@ class OrderLookupTests(unittest.TestCase):
                 self.assertEqual(scout_port._clean_po(entered), expected)
                 self.assertEqual(scout_port.clean_po(entered), expected)
 
-    def test_order_route_uses_normalized_po_for_both_requests(self):
+    def test_order_route_uses_one_exact_order_snapshot(self):
         upstream = Mock(status_code=200)
         upstream.json.return_value = {
             "items": [{
+                "orderNumber": "161664-1-LANG",
                 "status": "Test status",
                 "recipient": {"firstName": "Test", "address": {"country": "US"}},
                 "orderItems": [{
@@ -35,22 +36,27 @@ class OrderLookupTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["Cache-Control"], "no-store")
-        self.assertEqual(response.json["order_number"], "161664-1")
+        self.assertEqual(response.json["order_number"], "161664-1-LANG")
         self.assertEqual(response.json["status"], "Test status")
         self.assertEqual(len(response.json["order_items"]), 1)
-        self.assertEqual(get.call_count, 2)
+        self.assertEqual(get.call_count, 1)
         for call in get.call_args_list:
-            self.assertEqual(call.kwargs["params"], {"orderNumber": "161664-1"})
+            self.assertEqual(call.kwargs["params"], {"orderNumber": "161664-1-LANG"})
 
     def test_confirmation_phone_comes_from_recipient(self):
         upstream = Mock(status_code=200)
-        upstream.json.return_value = {"items": [{"recipient": {"phoneNumber": "+61400000001"}}]}
+        upstream.json.return_value = {"items": [{
+            "orderNumber": "123456-1-TEST", "status": "QUOTE_IN_PROGRESS",
+            "recipient": {"phoneNumber": "+61400000001"},
+        }]}
         with patch.object(scout_port.requests, "get", return_value=upstream):
             self.assertEqual(scout_port.fetch_full_order("123456-1-TEST")["confirmation_phone"], "+61400000001")
 
     def test_confirmation_does_not_use_synthetic_shipping_phone(self):
         upstream = Mock(status_code=200)
-        upstream.json.return_value = {"items": [{}]}
+        upstream.json.return_value = {"items": [{
+            "orderNumber": "123456-1-TEST", "status": "QUOTE_IN_PROGRESS",
+        }]}
         with patch.object(scout_port.requests, "get", return_value=upstream):
             self.assertEqual(scout_port.fetch_full_order("123456-1-TEST")["confirmation_phone"], "")
 

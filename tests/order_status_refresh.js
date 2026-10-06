@@ -24,7 +24,9 @@ async function runTests(html) {
     };
     vm.createContext(context);
     vm.runInContext(source, context);
-    const respond = (data, ok = true) => resolveRequest({ ok, json: async () => data });
+    const respond = (data, ok = true) => resolveRequest({
+      ok, json: async () => ({ order_number: "123456-1-TEST", ...data }),
+    });
     return { context, elements, events, calls, respond };
   }
   {
@@ -60,6 +62,24 @@ async function runTests(html) {
   }
   {
     const t = setup();
+    t.context.cur = "123456-1";
+    t.context.order.order_number = "123456-1-TEST";
+    const request = t.context.refreshOrderStatus();
+    assert.equal(t.calls[0].url, "/api/order-status/123456-1-TEST", "Refresh must use the resolved full PO");
+    t.respond({ status: "SHIPPED", status_checked_at: 1000 });
+    await request;
+    assert.equal(t.elements["#order-status"].textContent, "Shipped");
+  }
+  {
+    const t = setup(), request = t.context.refreshOrderStatus();
+    t.respond({ order_number: "123456-1-OTHER", status: "SHIPPED", status_checked_at: 1000 });
+    await request;
+    assert.equal(t.elements["#order-status"].textContent, "Pending Approval");
+    assert.match(t.elements["#status-check"].textContent, /last known status/);
+    assert.equal(t.elements["#rbody"].value, "My unsaved reply");
+  }
+  {
+    const t = setup();
     t.context.startStatusUpdates(t.context.cur, t.context.req);
     assert.equal(t.context.delay, 15000);
     t.context.document.hidden = true;
@@ -73,7 +93,7 @@ async function runTests(html) {
     t.context.stopStatusUpdates();
     assert.equal(t.context.statusTimer, null);
   }
-  return { passed: true, checks: ["fresh status", "no draft changes", "uncached requests", "failures", "order switching", "visibility", "focus"] };
+  return { passed: true, checks: ["fresh status", "no draft changes", "uncached requests", "failures", "order switching", "exact order identity", "visibility", "focus"] };
 }
 
 module.exports = runTests;

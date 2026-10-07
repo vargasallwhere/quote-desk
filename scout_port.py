@@ -3,6 +3,7 @@ Logins come from environment variables (Replit Secrets), never from this file.""
 import ast, os, re, time, base64, logging, datetime
 from email.mime.text import MIMEText
 import requests
+from catalog import lookup_variant
 
 _allwhere_auth_secret = os.environ.get("ALLWHERE_AUTH", "").strip()
 if _allwhere_auth_secret:
@@ -52,11 +53,6 @@ def cache_set(*_):
     pass
 
 
-PS_AUTH = {"Authorization": "Basic " + base64.b64encode(
-    f'{os.environ.get("PS_USER", "")}:{os.environ.get("PS_PASS", "")}'.encode()).decode()}
-
-PS_BASE    = "https://product.allwhere.co/v1"
-
 EU_COUNTRIES = {
     "austria", "belgium", "bulgaria", "croatia", "cyprus",
     "czech republic", "czechia", "denmark", "estonia", "finland",
@@ -87,35 +83,28 @@ def _extract_allwhere_mpn(description_html: str) -> str:
         return text
     return ""
 
-def _ps_variant(variant_id: str) -> dict:
-    """
-    Look up a variant in the product-service API (new catalog, v3.0+).
-    Returns dict with sku, mpn, title, price, is_build_to_order, or {} on failure.
-    Cached by variant_id.
-    """
-    cached = cache_get("ps_variants", variant_id)
-    if cached is not None:
-        return cached
-    try:
-        r = requests.get(f"{PS_BASE}/product-variants/{variant_id}",
-                         headers=PS_AUTH, timeout=15)
-        if r.status_code == 200:
-            v = r.json()
-            result = {
-                "sku":               str(v.get("sku", "")),
-                "mpn":               v.get("mpn"),   # None = catalog explicitly has no MPN
-                "product_name":      v.get("title") or "",
-                "price_charged":     float(v.get("price") or 0),
-                "is_build_to_order": bool(v.get("is_build_to_order")),
-                "attributes":        v.get("attributes") or {},
-                "found":             True,
-            }
-            cache_set("ps_variants", variant_id, result)
-            return result
-    except Exception:
-        pass
-    cache_set("ps_variants", variant_id, {})
-    return {}
+def _ps_variant(variant_id: str, expected_sku=None) -> dict:
+    return lookup_variant(variant_id, expected_sku)
+
+
+def _catalog_warnings(items):
+    """Separate internal diagnostics from vendor email text."""
+    warnings = []
+    for item in items:
+        diagnostic = item.get("catalog") or {}
+        if diagnostic.get("status") not in (None, "ok"):
+            warnings.append({
+                **diagnostic, "sku": item.get("sku", ""),
+                "mpn_source": item.get("mpn_source", "unavailable"),
+            })
+    return warnings
+
+
+def _quote_price_line(details):
+    """Catalog unit price only; never substitute an unverified snapshot price."""
+    if details.get("catalog_unit_price") is None:
+        return "Catalog unit price unavailable."
+    return f"Catalog unit price: USD {details['catalog_unit_price']:,.2f}"
 
 def clean_po(po: str) -> str:
     """Strip trailing ' (2)', ' (3)' etc. and word suffixes like '-GOOD', '-IRON'."""
@@ -381,19 +370,11 @@ def generate_uk_email(order_number: str) -> dict:
     has_apple = False
     has_non_apple = False
     item_brands = set()
+    resolved_items = []
 
     for raw in header["raw_items"]:
-        details = get_item_details(raw["productVariantId"], raw["quantity"])
-        if "error" in details:
-            snap = raw.get("snapshot") or {}
-            if not snap:
-                continue
-            details = {
-                "quantity":     raw["quantity"],
-                "product_name": snap.get("productName") or snap.get("title", ""),
-                "specs":        {a["name"]: a["value"] for a in (snap.get("attributes") or [])
-                                 if a.get("name") and a.get("value")},
-            }
+        details = get_item_details(raw["productVariantId"], raw["quantity"], raw.get("snapshot"))
+        resolved_items.append(details)
         name  = details.get("product_name", "")
         specs = details.get("specs", {})
         qty   = details.get("quantity", 1)
@@ -405,7 +386,7 @@ def generate_uk_email(order_number: str) -> dict:
             if vid in warranty_grouped:
                 warranty_grouped[vid]["qty"] += qty
             else:
-                warranty_grouped[vid] = {"name": name, "qty": qty}
+                warranty_grouped[vid] = {"name": name, "qty": qty, "price_line": _quote_price_line(details)}
                 warranty_order.append(vid)
         else:
             name_lower = name.lower()
@@ -426,7 +407,7 @@ def generate_uk_email(order_number: str) -> dict:
                     if val:
                         spec_parts.append(val)
                 desc = f"{name} - {', '.join(spec_parts)}" if spec_parts else name
-                products_grouped[vid] = {"desc": desc, "mpn": mpn, "qty": qty}
+                products_grouped[vid] = {"desc": desc, "mpn": mpn, "qty": qty, "price_line": _quote_price_line(details)}
                 products_order.append(vid)
 
     product_lines = []
@@ -439,12 +420,14 @@ def generate_uk_email(order_number: str) -> dict:
         if g["mpn"]:
             product_lines.append(g["mpn"])
         product_lines.append(g["desc"])
+        product_lines.append(g["price_line"])
 
     warranty_lines = []
     for vid in warranty_order:
         g = warranty_grouped[vid]
         line = f"{g['qty']}x {g['name']}" if g["qty"] > 1 else g["name"]
         warranty_lines.append(line)
+        warranty_lines.append(g["price_line"])
 
     if not product_lines and not warranty_lines:
         return {"error": "No items found for this order.", **ew_fields}
@@ -552,7 +535,7 @@ def generate_uk_email(order_number: str) -> dict:
     lines.append("Best,")
     lines.append("Sara")
 
-    return {"email_text": "\n".join(lines), **ew_fields}
+    return {"email_text": "\n".join(lines), "catalog_warnings": _catalog_warnings(resolved_items), **ew_fields}
 
 def generate_eu_email(order_number: str) -> dict:
     """
@@ -586,19 +569,11 @@ def generate_eu_email(order_number: str) -> dict:
     has_non_apple = False
     item_brands = set()
     has_cto_item = False
+    resolved_items = []
 
     for raw in header["raw_items"]:
-        details = get_item_details(raw["productVariantId"], raw["quantity"])
-        if "error" in details:
-            snap = raw.get("snapshot") or {}
-            if not snap:
-                continue
-            details = {
-                "quantity":     raw["quantity"],
-                "product_name": snap.get("productName") or snap.get("title", ""),
-                "specs":        {a["name"]: a["value"] for a in (snap.get("attributes") or [])
-                                 if a.get("name") and a.get("value")},
-            }
+        details = get_item_details(raw["productVariantId"], raw["quantity"], raw.get("snapshot"))
+        resolved_items.append(details)
         name  = details.get("product_name", "")
         specs = details.get("specs", {})
         qty   = details.get("quantity", 1)
@@ -612,7 +587,7 @@ def generate_eu_email(order_number: str) -> dict:
             if vid in warranty_grouped:
                 warranty_grouped[vid]["qty"] += qty
             else:
-                warranty_grouped[vid] = {"name": name, "qty": qty}
+                warranty_grouped[vid] = {"name": name, "qty": qty, "price_line": _quote_price_line(details)}
                 warranty_order.append(vid)
         else:
             name_lower = name.lower()
@@ -633,7 +608,7 @@ def generate_eu_email(order_number: str) -> dict:
                     if val:
                         spec_parts.append(val)
                 desc = f"{name} - {', '.join(spec_parts)}" if spec_parts else name
-                products_grouped[vid] = {"desc": desc, "mpn": mpn, "qty": qty}
+                products_grouped[vid] = {"desc": desc, "mpn": mpn, "qty": qty, "price_line": _quote_price_line(details)}
                 products_order.append(vid)
 
     product_lines = []
@@ -646,12 +621,14 @@ def generate_eu_email(order_number: str) -> dict:
         if g["mpn"]:
             product_lines.append(g["mpn"])
         product_lines.append(g["desc"])
+        product_lines.append(g["price_line"])
 
     warranty_lines = []
     for vid in warranty_order:
         g = warranty_grouped[vid]
         line = f"{g['qty']}x {g['name']}" if g["qty"] > 1 else g["name"]
         warranty_lines.append(line)
+        warranty_lines.append(g["price_line"])
 
     if not product_lines and not warranty_lines:
         return {"error": "No items found for this order.", **ew_fields}
@@ -751,7 +728,7 @@ def generate_eu_email(order_number: str) -> dict:
     lines.append("Best,")
     lines.append("Sara")
 
-    return {"email_text": "\n".join(lines), **ew_fields}
+    return {"email_text": "\n".join(lines), "catalog_warnings": _catalog_warnings(resolved_items), **ew_fields}
 
 def generate_us_email(order_number: str) -> dict:
     """
@@ -771,19 +748,11 @@ def generate_us_email(order_number: str) -> dict:
     has_apple = False
     has_non_apple = False
     item_brands = set()
+    resolved_items = []
 
     for raw in header["raw_items"]:
-        details = get_item_details(raw["productVariantId"], raw["quantity"])
-        if "error" in details:
-            snap = raw.get("snapshot") or {}
-            if not snap:
-                continue
-            details = {
-                "quantity":     raw["quantity"],
-                "product_name": snap.get("productName") or snap.get("title", ""),
-                "specs":        {a["name"]: a["value"] for a in (snap.get("attributes") or [])
-                                 if a.get("name") and a.get("value")},
-            }
+        details = get_item_details(raw["productVariantId"], raw["quantity"], raw.get("snapshot"))
+        resolved_items.append(details)
         name  = details.get("product_name", "")
         specs = details.get("specs", {})
         qty   = details.get("quantity", 1)
@@ -793,7 +762,7 @@ def generate_us_email(order_number: str) -> dict:
         needs_warranty = raw.get("protection_plan", "") not in ("", "No protection plan")
 
         if _WARRANTY_RE.search(name):
-            warranty_skus.append({"name": name, "qty": qty})
+            warranty_skus.append({"name": name, "qty": qty, "price_line": _quote_price_line(details)})
         else:
             name_lower = name.lower()
             if any(kw in name_lower for kw in _APPLE_KW):
@@ -823,6 +792,7 @@ def generate_us_email(order_number: str) -> dict:
                     "qty": qty,
                     "warranty": needs_warranty,
                     "vid": vid,
+                    "price_line": _quote_price_line(details),
                 })
 
     if not products and not warranty_skus:
@@ -912,6 +882,7 @@ def generate_us_email(order_number: str) -> dict:
         lines.append(p["name"])
         if p["specs"]:
             lines.append(p["specs"])
+        lines.append(p["price_line"])
         if p["warranty"]:
             lines.append("")
             lines.append("With warranty")
@@ -921,6 +892,7 @@ def generate_us_email(order_number: str) -> dict:
         for ws in warranty_skus:
             line = f"{ws['qty']}x {ws['name']}" if ws["qty"] > 1 else ws["name"]
             lines.append(line)
+            lines.append(ws["price_line"])
         lines.append("")
 
     enterprise_warranty = header.get("enterprise_warranty", False)
@@ -950,7 +922,7 @@ def generate_us_email(order_number: str) -> dict:
     lines.append("Best,")
     lines.append("Sara")
 
-    return {"email_text": "\n".join(lines)}
+    return {"email_text": "\n".join(lines), "catalog_warnings": _catalog_warnings(resolved_items)}
 
 def generate_auto_quote_email(order_number: str) -> dict:
     """
@@ -1076,6 +1048,7 @@ def generate_auto_quote_email(order_number: str) -> dict:
         "subject": subject,
         "email_text": email_text,
         "draft_url": draft_url,
+        "catalog_warnings": result.get("catalog_warnings", []),
     }
 
 def get_order_info_for_ticket(order_number: str) -> dict:
@@ -1089,36 +1062,11 @@ def get_order_info_for_ticket(order_number: str) -> dict:
 
     items = []
     for raw in header["raw_items"]:
-        details = get_item_details(raw["productVariantId"], raw["quantity"])
-        if "error" in details:
-            snap = raw.get("snapshot") or {}
-            if not snap:
-                continue
-            # v1 product-variant endpoint returned 404 (deleted/archived variant) —
-            # reconstruct from the snapshot Allwhere embeds in v2 order items.
-            details = {
-                "variant_id":    raw["productVariantId"],
-                "quantity":      raw["quantity"],
-                "sku":           str(snap.get("sku", "")),
-                "product_id":    snap.get("productId", ""),
-                "product_name":  snap.get("productName") or snap.get("title", ""),
-                "price_charged": float(snap.get("price", 0) or 0),
-                "specs":         {a["name"]: a["value"] for a in (snap.get("attributes") or [])
-                                  if a.get("name") and a.get("value")},
-                "allwhere_mpn":  snap.get("mpn") or "",
-            }
+        details = get_item_details(raw["productVariantId"], raw["quantity"], raw.get("snapshot"))
         sku          = details.get("sku", "")
         product_name = details.get("product_name", "")
         specs        = details.get("specs", {})
-        # Product-service is the sole source of truth for MPN.
-        # If PS knows the variant and has null, that means no MPN — stop there.
-        # Only fall back to description extraction if PS has never heard of this variant.
-        ps_data = _ps_variant(raw["productVariantId"])
-        if ps_data.get("found"):
-            mpn = ps_data.get("mpn") or ""
-        else:
-            # PS doesn't know this variant ID — use mono description extraction only
-            mpn = details.get("allwhere_mpn") or ""
+        mpn = details.get("allwhere_mpn") or ""
         items.append({
             "variant_id":   raw["productVariantId"],
             "sku":          sku,
@@ -1128,6 +1076,8 @@ def get_order_info_for_ticket(order_number: str) -> dict:
             "price":        details.get("price_charged", 0),
             "quantity":     raw["quantity"],
             "asset_id":     raw.get("asset_id"),
+            "catalog":      details["catalog"],
+            "mpn_source":   details["mpn_source"],
         })
 
     lead_time_approved = header["lead_time_approved"]
@@ -1155,12 +1105,66 @@ def get_order_info_for_ticket(order_number: str) -> dict:
         "enterprise_warranty_notes": header.get("enterprise_warranty_notes", ""),
         "has_autopilot":       has_autopilot,
         "items":               items,
+        "catalog_warnings":    _catalog_warnings(items),
         "is_depot_order":      header.get("is_depot_order", False),
         "depot_name":          header.get("depot_name", ""),
         "shipping_country":    header.get("shipping_country", ""),
     }
 
-def get_item_details(variant_id: str, quantity: int) -> dict:
+def get_item_details(variant_id: str, quantity: int, snapshot=None) -> dict:
+    """Prefer verified catalog data; preserve structured order MPNs on failure."""
+    snap = snapshot if isinstance(snapshot, dict) else {}
+    ps = _ps_variant(variant_id, snap.get("sku"))
+    if ps.get("found"):
+        details = {
+            "variant_id": variant_id, "quantity": quantity, "sku": ps["sku"],
+            "product_id": "", "product_name": ps["product_name"],
+            "price_charged": ps["price_charged"], "specs": ps["attributes"],
+            "allwhere_mpn": ps["mpn"] or "", "mpn_source": "catalog",
+            "is_build_to_order": ps["is_build_to_order"],
+            "catalog_unit_price": ps["price_charged"] if ps.get("price_available") else None,
+        }
+    elif snap:
+        attrs = snap.get("attributes") or []
+        specs = attrs if isinstance(attrs, dict) else {
+            a["name"]: a["value"] for a in attrs
+            if isinstance(a, dict) and a.get("name") and a.get("value")
+        }
+        structured_mpn = snap.get("mpn")
+        details = {
+            "variant_id": variant_id, "quantity": quantity,
+            "sku": str(snap.get("sku") or ""), "product_id": snap.get("productId", ""),
+            "product_name": snap.get("productName") or snap.get("title") or f"Variant {variant_id}",
+            "price_charged": float(snap.get("price") or 0), "specs": specs,
+            "allwhere_mpn": structured_mpn if isinstance(structured_mpn, str) else "",
+            "mpn_source": "order_snapshot" if structured_mpn else "unavailable",
+        }
+    else:
+        try:
+            details = _legacy_item_details(variant_id, quantity)
+        except (ValueError, TypeError, AttributeError, KeyError):
+            details = {"error": "Legacy catalog returned invalid product data."}
+        # A legacy SKU provides another identity check when no snapshot was supplied.
+        if details.get("sku") and ps.get("status") == "identity_mismatch":
+            details["allwhere_mpn"] = ""
+        details["mpn_source"] = "legacy_description" if details.get("allwhere_mpn") else "unavailable"
+        if "error" in details:
+            # Keep unknown items visible without leaking request exception text.
+            details = {"variant_id": variant_id, "quantity": quantity, "sku": "",
+                       "product_name": f"Variant {variant_id}", "specs": {},
+                       "price_charged": 0, "allwhere_mpn": "", "mpn_source": "unavailable"}
+    details["catalog"] = {
+        "status": ps["status"], "variant_id": variant_id,
+        "message": ps.get("message") or (
+            "The catalog explicitly has no MPN for this item." if ps["status"] == "no_mpn" else ""
+        ),
+    }
+    if ps.get("http_status") is not None:
+        details["catalog"]["http_status"] = ps["http_status"]
+    return details
+
+
+def _legacy_item_details(variant_id: str, quantity: int) -> dict:
     """
     Fetch product info for one line item (steps 3-5 of the old chain):
       3. /product-variant/{id}            → sku, price, productId
@@ -1183,27 +1187,8 @@ def get_item_details(variant_id: str, quantity: int) -> dict:
             **allwhere_auth_kwargs(),
             timeout=15,
         )
-    except requests.RequestException as e:
-        return {"error": f"Product-variant lookup failed: {e}"}
-
-    if r3.status_code == 404:
-        # Variant only exists in new product-service catalog (mono doesn't have it)
-        ps = _ps_variant(variant_id)
-        if ps:
-            result = {
-                "variant_id":    variant_id,
-                "quantity":      quantity,
-                "sku":           ps["sku"],
-                "product_id":    "",
-                "product_name":  ps["product_name"],
-                "price_charged": ps["price_charged"],
-                "specs":         ps["attributes"],
-                "allwhere_mpn":  ps["mpn"],
-            }
-            cacheable = {k: v for k, v in result.items() if k != "quantity"}
-            cache_set("variants", f"item:{variant_id}", cacheable)
-            return result
-        return {"error": f"Could not fetch variant {variant_id} (404 in mono, not in product-service)"}
+    except requests.RequestException:
+        return {"error": "Legacy product-variant lookup failed."}
 
     if r3.status_code != 200:
         return {"error": f"Could not fetch variant {variant_id} (HTTP {r3.status_code})"}
@@ -1332,13 +1317,19 @@ def fetch_full_order(order_number):
         if "autopilot" in title or "intune" in title:
             has_autopilot = True
             continue
-        if not mpn:
-            continue
+        variant_id = oi.get("productVariantId") or (oi.get("asset") or {}).get("productVariantId")
+        details = get_item_details(variant_id, int(oi.get("quantity") or 1), snap) if variant_id else None
+        if details:
+            mpn = details["allwhere_mpn"]
         order_items.append({
             "mpn": mpn,
-            "name": snap.get("title") or snap.get("productName") or "",
+            "name": snap.get("title") or snap.get("productName") or (details or {}).get("product_name", ""),
             "qty": int(oi.get("quantity") or 1),
             "price": float(snap.get("price") or 0),
+            "variant_id": variant_id,
+            "sku": str(snap.get("sku") or (details or {}).get("sku") or ""),
+            "catalog": (details or {}).get("catalog", {}),
+            "mpn_source": (details or {}).get("mpn_source", "order_snapshot" if mpn else "unavailable"),
         })
 
     # Status, approvals, warranty, and recipient all come from this same record.
@@ -1373,6 +1364,7 @@ def fetch_full_order(order_number):
         "has_autopilot": has_autopilot,
         "autopilot_info": autopilot_info,
         "order_items": order_items,
+        "catalog_warnings": _catalog_warnings(order_items),
         "recipient": {
             "first_name": (rec.get("firstName") or "").strip(),
             "last_name": (rec.get("lastName") or "").strip(),

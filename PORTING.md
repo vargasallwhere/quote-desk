@@ -2,6 +2,28 @@
 `app.py` now uses `scout_port.py` (functions copied from Scout Dev, logins from env) and `gmail_auth.py` (env token).
 The Alternative Approval, Price Approval and Autopilot buttons hide themselves unless `SCOUT_URL` is set.
 
+## Catalog verification — 2026-10-07
+
+Valid product-service credentials were supplied through Replit Secrets. Read-only authenticated requests to `https://product.allwhere.co/v1/product-variants/{id}` succeeded with HTTP 200 using Basic authentication in this workspace. Returned variant IDs and SKUs matched the exact orders:
+
+| Order | Variant ID | SKU | Catalog MPN |
+|---|---|---|---|
+| 161876-1-JUST | 686df253-3798-40b6-aec1-c776c6091323 | 16699 | KM3322W-R-UK |
+| 161876-1-JUST | bd389f4e-97d9-4c80-8188-7ae0b7ba9d64 | 16702 | KM555-BLK-UK |
+| 161880-1-JUST | 690b978a-a4f2-441b-a6fe-714369436176 | 10237 | LS24D310EAUXXU |
+
+All three have non-null structured catalog MPNs. Samsung's snapshot has null MPN, but no description parsing is needed: its part number was independently verified in the authenticated catalog. Earlier legacy endpoint 404s do not prove deletion or migration.
+
+After the client changes, the read-only EU email builder and GET `/api/order/{po}` and `/api/ticket-info/{po}` were exercised for both orders against the live services. Both endpoints returned HTTP 200 and the expected SKU-to-MPN mappings without catalog warnings. Gmail was disabled for these checks; no live drafts were inspected, created, edited, sent, or deleted.
+
+This verifies the workspace used for these checks, not a separate peer's desktop environment or a published deployment. Neither was accessed or changed. The application loads catalog credentials per request rather than retaining an import-time empty authorization header. For local UI verification, run the local-only console workflow, not a public preview.
+
+### Vendor auto-quote prices
+
+The regional templates now explicitly include product-service catalog unit prices. Live read-only EU quote checks verified USD 27.85 for SKU 16699, USD 55.70 for SKU 16702, and USD 129.18 for SKU 10237 under their respective verified MPNs. These are unit prices, not quantity-multiplied totals. Unavailable catalog prices are labeled unavailable rather than replaced with order-snapshot prices.
+
+All 34 Python tests and the three browser-side scripts passed after this change, including coverage for warranty prices, duplicate quantities, missing pricing, and explicit zero. The auto-draft wrapper was tested only with mocked Gmail; existing live Gmail drafts remain unchanged.
+
 ## Replit secrets to add (names only)
 `GMAIL_TOKEN_JSON` (contents of gmail_token.json), `ALLWHERE_USER`, `ALLWHERE_PASS`, `PS_USER`, `PS_PASS`.
 

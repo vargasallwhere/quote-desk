@@ -9,6 +9,11 @@ import scout_port
 class OrderStatusTests(unittest.TestCase):
     def setUp(self):
         self.client = app.test_client()
+        catalog = patch.object(scout_port, "_ps_variant", return_value={
+            "found": False, "status": "temporary_failure", "message": "Catalog unavailable.",
+        })
+        catalog.start()
+        self.addCleanup(catalog.stop)
 
     def response(self, items, status_code=200):
         response = Mock(status_code=status_code)

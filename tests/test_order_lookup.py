@@ -6,6 +6,14 @@ import scout_port
 
 
 class OrderLookupTests(unittest.TestCase):
+    def setUp(self):
+        # Existing order tests isolate order identity/phone from the separate catalog.
+        catalog = patch.object(scout_port, "_ps_variant", return_value={
+            "found": False, "status": "temporary_failure", "message": "Catalog unavailable.",
+        })
+        catalog.start()
+        self.addCleanup(catalog.stop)
+
     def test_lookup_normalization_preserves_numeric_order_segment(self):
         cases = {
             "161664-1-LANG": "161664-1",

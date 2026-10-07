@@ -182,22 +182,26 @@ async function refreshOrderStatus(po=cur,my=req){
 }
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshOrderStatus()});
 window.addEventListener("focus",()=>refreshOrderStatus());
-async function openPO(po){
+async function openPO(po,quoteWarnings=[]){
   stopStatusUpdates();
   cur=po;order=null;const my=++req;bar();try{localStorage.setItem("qd_last",po)}catch(e){}$("#po").textContent=po;
   $("#usBtns").hidden=true;$("#usbox").innerHTML="";$("#ap").hidden=true;$("#cb").hidden=true;$("#cto").hidden=true;$("#apbox").innerHTML="";tinfo=null;$("#order").innerHTML='<p class="empty">Loading…</p>';$("#thread").innerHTML='<p class="empty">Loading from Gmail…</p>';$("#sync").textContent="";
-  const orderReady=fetch("/api/order/"+encodeURIComponent(po),{cache:"no-store"}).then(r=>r.json()).then(o=>{if(my===req){order=o;showOrder(o);if(!o.error)startStatusUpdates(po,my)}}).catch(e=>{if(my===req)$("#order").innerHTML='<p class="err">'+esc(e)+'</p>'});
+  const orderReady=fetch("/api/order/"+encodeURIComponent(po),{cache:"no-store"}).then(r=>r.json()).then(o=>{if(my===req){order=o;showOrder(o,quoteWarnings);if(!o.error)startStatusUpdates(po,my)}}).catch(e=>{if(my===req)$("#order").innerHTML='<p class="err">'+esc(e)+'</p>'});
   fetch("/api/ticket-info/"+encodeURIComponent(po)).then(r=>r.json()).then(t=>{if(my===req&&!t.error){tinfo=t;$("#ap").hidden=false;showCountry(t.shipping_country);showCto(t)}}).catch(()=>{});
   fetch("/api/threads/"+encodeURIComponent(po)).then(r=>r.json()).then(async t=>{await orderReady;if(my===req)showThreads(t)}).catch(e=>{if(my===req)$("#thread").innerHTML='<p class="err">'+esc(e)+'</p>'});
 }
-function showOrder(o){
+function catalogWarningsHtml(warnings){
+  if(!warnings?.length)return "";
+  return '<div class="err" role="status">'+warnings.map(w=>`<small>SKU ${esc(w.sku||"unknown")}: ${esc(w.message)}${w.mpn_source==="order_snapshot"?" Using structured order-snapshot MPN.":""}</small>`).join("")+"</div>";
+}
+function showOrder(o,quoteWarnings=[]){
   if(o.error){$("#order").innerHTML='<p class="err">'+esc(o.error)+'</p>';return}
   $("#po").textContent=o.order_number||cur;
-  const r=o.recipient,items=o.order_items.map(i=>`${i.qty} × ${hl(i.name)}<small class="mono">${hl(i.mpn)}</small>`).join("<br>")||"—";
+  const r=o.recipient,items=o.order_items.map(i=>`${i.qty} × ${hl(i.name)}<small class="mono">${i.mpn?hl(i.mpn):"MPN unavailable"}${i.mpn_source==="order_snapshot"?" (order snapshot; catalog not verified)":""}</small>`).join("<br>")||"—";
   $("#order").innerHTML=`<dl class="facts">
    <div><dt>Order status</dt><dd><span class="status" id="order-status" title="Status from Allwhere">${esc(statusText(o.status))}</span><small id="status-check" aria-live="polite">${esc(statusCheckedText(o.status_checked_at))}</small></dd></div>
    <div><dt>Customer</dt><dd>${esc(o.org_name)}<small>${esc(o.purchaser.name)}</small></dd></div>
-   <div><dt>Items</dt><dd>${items}</dd></div>
+    <div><dt>Items</dt><dd>${items}${catalogWarningsHtml(o.catalog_warnings)}${quoteWarnings.length?"<small>Catalog diagnostics when the quote was generated:</small>"+catalogWarningsHtml(quoteWarnings):""}</dd></div>
    <div><dt>Ship to</dt><dd>${esc(r.first_name)} ${esc(r.last_name)}<small>${esc([r.address1,r.address2,r.city,r.state,r.zip,r.country].filter(Boolean).join(", "))}</small><small class="mono">${esc(r.phone)}</small></dd></div>
    <div><dt>Shipping</dt><dd>${esc(o.shipping_type)||"—"}</dd></div>
    <div><dt>Warranty</dt><dd>${warrantyHtml(o.warranty)}</dd></div>
@@ -209,7 +213,7 @@ function showThreads(t){
   if(!t.threads.length){$("#thread").innerHTML='<div class="empty">No Gmail thread yet for this PO.<p><button class="btn primary" id="qd">Draft quote request email</button> <span class="note" id="qs"></span></p></div>';
     $("#qd").onclick=async()=>{const b=$("#qd");b.disabled=true;$("#qs").textContent="Creating draft in Gmail…";
       const r=await fetch("/api/quote-draft",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({po:cur})});const j=await r.json();
-      if(!r.ok){$("#qs").textContent=j.error||"Failed";b.disabled=false;return}openPO(cur)};return}
+      if(!r.ok){$("#qs").textContent=j.error||"Failed";b.disabled=false;return}openPO(cur,j.catalog_warnings||[])};return}
   const sel=t.threads.length>1?`<div class="ph"><span class="sync">${t.threads.length} threads match this PO</span><select id="ts">${t.threads.map((x,i)=>`<option value="${i}">${esc(x.messages[0].subject)} · ${x.messages.length} msg · ${fmt(x.messages.at(-1).date)}</option>`).join("")}</select></div>`:"";
   $("#thread").innerHTML=sel+'<div id="msgs"></div><div id="reply" class="reply"></div>';
   const draw=i=>{const th=t.threads[i];$("#msgs").innerHTML=th.messages.map((m,j,a)=>msgHtml(m,j===a.length-1)).join("");wire();composer(th,t.drafts)};
@@ -304,10 +308,11 @@ function quoteComposer(th,d,draftId){
 </script><script>
 function uniq(items){const seen=new Set();return items.map((it,i)=>[it,i]).filter(([it])=>{if(seen.has(it.sku))return false;seen.add(it.sku);return true})}
 function picker(withText,btnLabel,endpoint){
-  const list=uniq(tinfo.items);
+   const list=uniq(tinfo.items);
   $("#apbox").innerHTML=list.map(([it,i])=>`<label class="it"><input type="checkbox" value="${i}" checked> <span>${esc(it.product_name)} (SKU ${esc(it.sku)})</span></label>`).join("")+
    (withText?'<textarea id="apText" placeholder="Paste the vendor\'s alternative from the quote (optional)"></textarea>':"")+
-   `<div><button class="btn primary" id="apGo">${btnLabel}</button> <span class="note" id="apStat"></span></div>`;
+    catalogWarningsHtml(tinfo.catalog_warnings)+
+    `<div><button class="btn primary" id="apGo">${btnLabel}</button> <span class="note" id="apStat"></span></div>`;
   $("#apGo").onclick=async()=>{
     const idx=[...document.querySelectorAll("#apbox input:checked")].map(x=>+x.value);
     if(!idx.length){$("#apStat").textContent="Select at least one item.";return}

@@ -69,7 +69,7 @@ def index():
 
 @app.after_request
 def fresh_order_responses(response):
-    if request.path == "/" or request.path.startswith(("/api/order/", "/api/order-status/")):
+    if request.path == "/" or request.path.startswith(("/api/order/", "/api/order-status/", "/api/ticket-info/")):
         response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"
     return response

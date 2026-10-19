@@ -100,13 +100,6 @@ def _catalog_warnings(items):
     return warnings
 
 
-def _quote_price_line(details):
-    """Catalog unit price only; never substitute an unverified snapshot price."""
-    if details.get("catalog_unit_price") is None:
-        return "Catalog unit price unavailable."
-    return f"USD {details['catalog_unit_price']:,.2f}"
-
-
 _WARRANTY_RE = re.compile(
     r"apple\s*care|protection(?:\s*plan)?|warranty|extended\s*service|service\s*agreement",
     re.IGNORECASE,
@@ -414,7 +407,7 @@ def generate_uk_email(order_number: str) -> dict:
             if vid in warranty_grouped:
                 warranty_grouped[vid]["qty"] += qty
             else:
-                warranty_grouped[vid] = {"name": name, "qty": qty, "price_line": _quote_price_line(details)}
+                warranty_grouped[vid] = {"name": name, "qty": qty}
                 warranty_order.append(vid)
         else:
             name_lower = name.lower()
@@ -436,7 +429,7 @@ def generate_uk_email(order_number: str) -> dict:
                         spec_parts.append(val)
                 desc = f"{name} - {', '.join(spec_parts)}" if spec_parts else name
                 products_grouped[product_key] = {"desc": desc, "mpn": mpn, "qty": qty,
-                                                 "plan": plan, "price_line": _quote_price_line(details)}
+                                                 "plan": plan}
                 products_order.append(product_key)
 
     product_lines = []
@@ -449,7 +442,6 @@ def generate_uk_email(order_number: str) -> dict:
         if g["mpn"]:
             product_lines.append(g["mpn"])
         product_lines.append(g["desc"])
-        product_lines.append(g["price_line"])
         if g["plan"]:
             product_lines.append(_warranty_request(g["plan"]))
 
@@ -458,7 +450,6 @@ def generate_uk_email(order_number: str) -> dict:
         g = warranty_grouped[vid]
         line = f"{g['qty']}x {g['name']}" if g["qty"] > 1 else g["name"]
         warranty_lines.append(line)
-        warranty_lines.append(g["price_line"])
 
     if not product_lines and not warranty_lines:
         return {"error": "No items found for this order.", **ew_fields}
@@ -618,7 +609,7 @@ def generate_eu_email(order_number: str) -> dict:
             if vid in warranty_grouped:
                 warranty_grouped[vid]["qty"] += qty
             else:
-                warranty_grouped[vid] = {"name": name, "qty": qty, "price_line": _quote_price_line(details)}
+                warranty_grouped[vid] = {"name": name, "qty": qty}
                 warranty_order.append(vid)
         else:
             name_lower = name.lower()
@@ -640,7 +631,7 @@ def generate_eu_email(order_number: str) -> dict:
                         spec_parts.append(val)
                 desc = f"{name} - {', '.join(spec_parts)}" if spec_parts else name
                 products_grouped[product_key] = {"desc": desc, "mpn": mpn, "qty": qty,
-                                                 "plan": plan, "price_line": _quote_price_line(details)}
+                                                 "plan": plan}
                 products_order.append(product_key)
 
     product_lines = []
@@ -653,7 +644,6 @@ def generate_eu_email(order_number: str) -> dict:
         if g["mpn"]:
             product_lines.append(g["mpn"])
         product_lines.append(g["desc"])
-        product_lines.append(g["price_line"])
         if g["plan"]:
             product_lines.append(_warranty_request(g["plan"]))
 
@@ -662,7 +652,6 @@ def generate_eu_email(order_number: str) -> dict:
         g = warranty_grouped[vid]
         line = f"{g['qty']}x {g['name']}" if g["qty"] > 1 else g["name"]
         warranty_lines.append(line)
-        warranty_lines.append(g["price_line"])
 
     if not product_lines and not warranty_lines:
         return {"error": "No items found for this order.", **ew_fields}
@@ -795,7 +784,7 @@ def generate_us_email(order_number: str) -> dict:
         plan = device_protection_plan(raw.get("protection_plan"))
 
         if _WARRANTY_RE.search(name):
-            warranty_skus.append({"name": name, "qty": qty, "price_line": _quote_price_line(details)})
+            warranty_skus.append({"name": name, "qty": qty})
         else:
             name_lower = name.lower()
             if any(kw in name_lower for kw in _APPLE_KW):
@@ -823,7 +812,6 @@ def generate_us_email(order_number: str) -> dict:
                     "qty": qty,
                     "plan": plan,
                     "vid": vid,
-                    "price_line": _quote_price_line(details),
                 })
 
     if not products and not warranty_skus:
@@ -913,7 +901,6 @@ def generate_us_email(order_number: str) -> dict:
         lines.append(p["name"])
         if p["specs"]:
             lines.append(p["specs"])
-        lines.append(p["price_line"])
         if p["plan"]:
             lines.append(_warranty_request(p["plan"]))
         lines.append("")
@@ -922,7 +909,6 @@ def generate_us_email(order_number: str) -> dict:
         for ws in warranty_skus:
             line = f"{ws['qty']}x {ws['name']}" if ws["qty"] > 1 else ws["name"]
             lines.append(line)
-            lines.append(ws["price_line"])
         lines.append("")
 
     enterprise_warranty = header.get("enterprise_warranty", False)

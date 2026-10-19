@@ -158,12 +158,13 @@ class WarrantyTests(unittest.TestCase):
                         self.assertEqual(summary["devices"], [
                             {"name": "Apple MacBook Test", "plan": plan, "qty": 1},
                         ])
-                        self.assertIn("USD 27.85\nWith warranty — " + plan, text)
+                        self.assertIn("With warranty — " + plan, text)
                         self.assertEqual(text.count("With warranty"), 1)
                     else:
                         self.assertEqual(summary["devices"], [])
                         self.assertNotIn("With warranty", text)
-                    self.assertIn("USD 27.85", text)
+                    self.assertNotIn("USD ", text)
+                    self.assertNotIn("Catalog unit price", text)
                     self.assertIn("Enrolled in ABM: TEST-ABM", text)
                     self.assertNotIn("999.00", text)
                     self.assertNotIn("3 year", text)
@@ -185,11 +186,12 @@ class WarrantyTests(unittest.TestCase):
                 for block, qty, plan in zip(blocks, [8, 10, 4, 5],
                                             ["Add protection plan", "", "Plan Alpha", "Plan Beta"]):
                     self.assertRegex(block, rf"(?im)^{qty}x$")
-                    self.assertIn("USD 27.85", block)
+                    self.assertNotIn("USD ", block)
                     self.assertEqual("With warranty" in block, bool(plan))
                     if plan:
                         self.assertIn("With warranty — " + plan, block)
-                self.assertEqual(text.splitlines().count("USD 27.85"), 4)
+                self.assertNotIn("USD ", text)
+                self.assertNotIn("Catalog unit price", text)
                 self.assertNotIn("USD 222.80", text)
 
     def test_standalone_enterprise_and_catalog_failure_remain_distinct(self):
@@ -219,8 +221,8 @@ class WarrantyTests(unittest.TestCase):
                         self.assertEqual("With Enterprise Warranty" in text, enterprise)
                         self.assertIn("TEST-AUTOPILOT" if country == "United States"
                                       else "CSV hash extraction", text)
-                        self.assertIn("USD 55.70" if not failure
-                                      else "Catalog unit price unavailable.", text)
+                        self.assertNotIn("USD ", text)
+                        self.assertNotIn("Catalog unit price", text)
                         self.assertNotIn("999.00", text)
 
     def test_existing_thread_or_draft_blocks_every_quote_write(self):

@@ -9,8 +9,8 @@ Prioritize repairing and verifying catalog access, not description parsing or sn
 
 **How to apply:** Investigate residual MPN gaps only after successful authenticated reads. Never infer another person's environment has the same credential problem without inspecting its configuration securely.
 
-Do not ask the user to choose the price source again for vendor auto-quotes; use the established catalog-price requirement.
+The earlier catalog-price inclusion decision was superseded; removing only a price label was not the user's intent.
 
-**Why:** The user corrected an unnecessary source-selection question after catalog access was repaired: “you already know this answer.”
+**Why:** The user clarified that “get rid of it” meant remove the price itself, not just the label before the amount. Keeping a bare USD amount did not meet the request.
 
-**How to apply:** Use the catalog-price requirement documented in replit.md when fixing auto-quote omissions, without reopening the same decision.
+**How to apply:** Follow the current vendor-email requirement in replit.md rather than reopening the old price-source decision. Keep this correction scoped to vendor requests, not unrelated internal catalog data.

@@ -49,6 +49,11 @@ def order(po):
 
 
 class CatalogTests(unittest.TestCase):
+    def assert_no_quote_prices(self, text):
+        self.assertNotRegex(text, r"(?im)^\s*(?:USD|GBP|EUR|AUD|NZD|\$)\s*[\d,]+\.\d{2}\s*$")
+        self.assertNotIn("Catalog unit price", text)
+        self.assertNotIn("999.00", text, "Snapshot prices must not leak into quote requests")
+
     def setUp(self):
         env = patch.dict(os.environ, {"PS_USER": "test-user", "PS_PASS": "test-password"})
         env.start()
@@ -245,14 +250,7 @@ class CatalogTests(unittest.TestCase):
                     result = scout.generate_auto_quote_email(po)
                 self.assertEqual(result["region"], "eu")
                 self.assertEqual(bool(result["catalog_warnings"]), code == 503)
-                if code == 200:
-                    indices = [0, 1] if po == "161876-1-JUST" else [2]
-                    for i in indices:
-                        self.assertIn(f"\nUSD {PRICES[i]:.2f}\n", result["email_text"])
-                else:
-                    self.assertIn("Catalog unit price unavailable.", result["email_text"])
-                    self.assertNotIn("999.00", result["email_text"])
-                self.assertNotIn("Catalog unit price: ", result["email_text"])
+                self.assert_no_quote_prices(result["email_text"])
                 if po == "161876-1-JUST":
                     for _, _, mpn, _ in VARIANTS[:2]:
                         self.assertIn(mpn, result["email_text"])
@@ -262,19 +260,16 @@ class CatalogTests(unittest.TestCase):
                     self.assertIn("Samsung", result["email_text"])
                     self.assertNotIn("LS24D310EAUXXU", result["email_text"])
 
-    def test_all_regional_templates_keep_prices_with_correct_mpns(self):
+    def test_all_regional_templates_keep_mpns_without_prices(self):
         for po in ("161876-1-JUST", "161880-1-JUST"):
             with patch.object(scout.requests, "get", side_effect=self.mock_reads(po)):
                 for builder in (scout.generate_eu_email, scout.generate_uk_email, scout.generate_us_email):
                     text = builder(po)["email_text"]
                     indices = [0, 1] if po == "161876-1-JUST" else [2]
                     for i in indices:
-                        following = text.split(VARIANTS[i][2], 1)[1]
-                        item_block = following.split("\n\n", 1)[0]
-                        self.assertIn(f"USD {PRICES[i]:.2f}", item_block.splitlines())
-                    self.assertNotIn("999.00", text, "Do not use order-snapshot/customer prices")
-                    self.assertNotIn("Catalog unit price: ", text)
-                    self.assertEqual(sum(line.startswith("USD ") for line in text.splitlines()), len(indices))
+                        self.assertIn(VARIANTS[i][2], text)
+                        self.assertNotIn(f"{PRICES[i]:.2f}", text)
+                    self.assert_no_quote_prices(text)
 
     def test_missing_catalog_price_is_not_invented_and_explicit_zero_is_valid(self):
         for raw_price in (None, "missing", 0):
@@ -285,12 +280,10 @@ class CatalogTests(unittest.TestCase):
                 data["price"] = raw_price
             with patch.object(catalog.requests, "get", return_value=response(data)):
                 details = scout.get_item_details(VARIANTS[0][0], 2, {"sku": "16699", "price": 999})
-            price_line = scout._quote_price_line(details)
-            self.assertEqual(price_line, "USD 0.00" if raw_price == 0
-                             else "Catalog unit price unavailable.")
+            self.assertEqual(details.get("catalog_unit_price"), 0 if raw_price == 0 else None)
             self.assertEqual(details["allwhere_mpn"], "KM3322W-R-UK")
 
-    def test_duplicate_quantities_do_not_multiply_unit_prices(self):
+    def test_duplicate_quantities_are_preserved_without_prices(self):
         selected = order("161876-1-JUST")
         duplicate = deepcopy(selected["orderItems"][0])
         duplicate["quantity"] = 3
@@ -302,11 +295,10 @@ class CatalogTests(unittest.TestCase):
             for builder in (scout.generate_eu_email, scout.generate_uk_email, scout.generate_us_email):
                 text = builder("161876-1-JUST")["email_text"]
                 self.assertIn("5X" if builder == scout.generate_us_email else "5x", text)
-                self.assertEqual(text.splitlines().count("USD 27.85"), 1)
-                self.assertNotIn("Catalog unit price: ", text)
+                self.assert_no_quote_prices(text)
                 self.assertNotIn("139.25", text)
 
-    def test_warranty_catalog_prices_are_included(self):
+    def test_warranty_requests_do_not_include_catalog_prices(self):
         read = self.mock_reads("161876-1-JUST")
         def requests_get(url, **kwargs):
             result = read(url, **kwargs)
@@ -316,11 +308,12 @@ class CatalogTests(unittest.TestCase):
         with patch.object(scout.requests, "get", side_effect=requests_get):
             for builder in (scout.generate_eu_email, scout.generate_uk_email, scout.generate_us_email):
                 text = builder("161876-1-JUST")["email_text"]
-                self.assertIn("Dell Warranty\nUSD 55.70", text)
-                self.assertNotIn("Catalog unit price: ", text)
+                self.assertIn("Dell Warranty", text)
+                self.assertNotIn("55.70", text)
+                self.assert_no_quote_prices(text)
 
     def test_regional_product_and_warranty_zero_and_unavailable_prices(self):
-        for raw_price in (0, None, "missing"):
+        for raw_price in (0, None, "missing", 2419.12):
             read = self.mock_reads("161876-1-JUST")
             def requests_get(url, **kwargs):
                 result = read(url, **kwargs)
@@ -338,14 +331,9 @@ class CatalogTests(unittest.TestCase):
                 for builder in (scout.generate_eu_email, scout.generate_uk_email, scout.generate_us_email):
                     with self.subTest(price=raw_price, region=builder.__name__):
                         text = builder("161876-1-JUST")["email_text"]
-                        expected = "USD 0.00" if raw_price == 0 else "Catalog unit price unavailable."
-                        self.assertEqual(text.splitlines().count(expected), 2)
-                        self.assertIn("Dell Warranty\n" + expected, text)
-                        self.assertNotIn("Catalog unit price: ", text)
-                        self.assertNotIn("999.00", text)
-
-    def test_price_formatter_preserves_thousands_and_decimal_places(self):
-        self.assertEqual(scout._quote_price_line({"catalog_unit_price": 1234.5}), "USD 1,234.50")
+                        self.assertIn("Dell Warranty", text)
+                        self.assertNotIn("2,419.12", text)
+                        self.assert_no_quote_prices(text)
 
 
 if __name__ == "__main__":

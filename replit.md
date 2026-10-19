@@ -23,7 +23,7 @@ Catalog reads validate the returned variant ID and order-snapshot SKU. Successfu
 
 Read-only verification uses `generate_eu_email`, `generate_uk_email`, or `generate_us_email` and the order/ticket GET endpoints. **Do not call `generate_auto_quote_email` or POST `/api/quote-draft` against live Gmail during verification**: those create real drafts.
 
-New vendor auto-quote drafts must include each item's product-service catalog unit price as `USD 27.85`, without the `Catalog unit price: ` prefix, preserving the existing amount formatting. Apply this to every regional template and warranty item, including valid zero prices. When catalog pricing is unavailable, retain `Catalog unit price unavailable.`; do not substitute an unverified order-snapshot price or change an existing Gmail draft.
+Vendor quote-request emails must not include product or warranty prices, currency/amount lines, price labels, or unavailable-price placeholders. Apply this to every regional template, including Australia and New Zealand. Keep quantities, MPNs, specifications, and warranty requests. Catalog prices may still be used internally; never insert them into the vendor request. Do not change existing Gmail drafts unless the user specifically asks to correct that draft.
 
 Additional browser-side checks: `node tests/order_status_refresh.js`, `node tests/confirmation_load.js`, and `node tests/catalog_display.js`.
 

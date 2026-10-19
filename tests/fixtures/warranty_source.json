@@ -1,0 +1,17 @@
+{
+  "evidence": {
+    "method": "Authorized read-only v2/order inspection; only warranty-related values retained. Sample identities and product names replaced.",
+    "pictured_item": "The sole MacBook on the supplied shield/check screenshot was returned with Add protection plan.",
+    "contrast": "A different order's two peripherals returned No protection plan; another order's cable and monitor returned null.",
+    "limitation": "No upstream UI source or API documentation mapping the blue shield/check was available. These observations correlate the pictured item with protectionPlan; they do not prove the icon's rendering condition. The contrasting items were not independently checked in the upstream UI.",
+    "insurance": "insuranceRequested was null on both the pictured item and all contrasting items. Do not substitute it for protectionPlan.",
+    "synthetic_cases": "Specific named plans, mixed duplicates, malformed values, and normalized no-plan variants in tests are defensive synthetic cases, not additional observed upstream values."
+  },
+  "observed": [
+    {"sample": "pictured-device", "protectionPlan": "Add protection plan", "insuranceRequested": null, "requested": true},
+    {"sample": "contrasting-peripheral-a", "protectionPlan": "No protection plan", "insuranceRequested": null, "requested": false},
+    {"sample": "contrasting-peripheral-b", "protectionPlan": "No protection plan", "insuranceRequested": null, "requested": false},
+    {"sample": "contrasting-cable", "protectionPlan": null, "insuranceRequested": null, "requested": false},
+    {"sample": "contrasting-monitor", "protectionPlan": null, "insuranceRequested": null, "requested": false}
+  ]
+}

@@ -106,6 +106,34 @@ def _quote_price_line(details):
         return "Catalog unit price unavailable."
     return f"USD {details['catalog_unit_price']:,.2f}"
 
+
+_WARRANTY_RE = re.compile(
+    r"apple\s*care|protection(?:\s*plan)?|warranty|extended\s*service|service\s*agreement",
+    re.IGNORECASE,
+)
+
+
+def device_protection_plan(value):
+    """Return a requested plan, not a truthiness flag.
+
+    Allwhere read-only samples contain 'Add protection plan', 'No protection
+    plan', and null. Non-string values are not evidence of a requested plan.
+    Preserve specific plan wording without guessing duration or coverage type.
+    """
+    if not isinstance(value, str):
+        return ""
+    plan = value.strip()
+    if " ".join(plan.casefold().split()) in (
+        "", "no protection plan", "none", "no plan", "no warranty", "false", "no",
+    ):
+        return ""
+    return plan
+
+
+def _warranty_request(plan):
+    return f"With warranty — {plan}" if plan else ""
+
+
 def clean_po(po: str) -> str:
     """Strip trailing ' (2)', ' (3)' etc. and word suffixes like '-GOOD', '-IRON'."""
     po = re.sub(r"\s*\(\d+\)\s*$", "", po.strip())
@@ -199,7 +227,7 @@ def get_order_header(order_number: str) -> dict:
             "order_item_number": oi.get("orderItemNumber", ""),
             "asset_id":          oi.get("assetId"),
             "snapshot":          oi.get("productVariantSnapshot"),
-            "protection_plan":   (oi.get("protectionPlan") or "").strip(),
+            "protection_plan":   device_protection_plan(oi.get("protectionPlan")),
         })
     raw_items.sort(key=lambda x: _parse_item_seq(x["order_item_number"]))
 
@@ -357,12 +385,10 @@ def generate_uk_email(order_number: str) -> dict:
     }
 
     # ── Items with specs — separate devices from warranty ──────────────────
-    _WARRANTY_RE = re.compile(r"apple\s*care|protection\s*plan|warranty|extended\s*service", re.IGNORECASE)
-
     _APPLE_KW = {"apple", "macbook", "ipad", "iphone", "imac", "mac mini", "mac studio", "mac pro", "airpods"}
     _BRAND_KW = ["lenovo", "dell", "hp", "microsoft", "samsung", "asus", "acer", "apple"]
 
-    # Group by variant_id to consolidate duplicate items
+    # Only consolidate devices with the same variant AND requested plan.
     products_grouped = {}
     products_order = []
     warranty_grouped = {}
@@ -381,6 +407,8 @@ def generate_uk_email(order_number: str) -> dict:
         name = re.sub(r"^.*?\|\s*", "", name)
         mpn = details.get("allwhere_mpn", "")
         vid = raw["productVariantId"]
+        plan = device_protection_plan(raw.get("protection_plan"))
+        product_key = (vid, plan)
 
         if _WARRANTY_RE.search(name):
             if vid in warranty_grouped:
@@ -398,8 +426,8 @@ def generate_uk_email(order_number: str) -> dict:
                 if brand in name_lower:
                     item_brands.add(brand)
 
-            if vid in products_grouped:
-                products_grouped[vid]["qty"] += qty
+            if product_key in products_grouped:
+                products_grouped[product_key]["qty"] += qty
             else:
                 spec_parts = []
                 for key in ("Memory", "Storage", "Color"):
@@ -407,8 +435,9 @@ def generate_uk_email(order_number: str) -> dict:
                     if val:
                         spec_parts.append(val)
                 desc = f"{name} - {', '.join(spec_parts)}" if spec_parts else name
-                products_grouped[vid] = {"desc": desc, "mpn": mpn, "qty": qty, "price_line": _quote_price_line(details)}
-                products_order.append(vid)
+                products_grouped[product_key] = {"desc": desc, "mpn": mpn, "qty": qty,
+                                                 "plan": plan, "price_line": _quote_price_line(details)}
+                products_order.append(product_key)
 
     product_lines = []
     for i, vid in enumerate(products_order):
@@ -421,6 +450,8 @@ def generate_uk_email(order_number: str) -> dict:
             product_lines.append(g["mpn"])
         product_lines.append(g["desc"])
         product_lines.append(g["price_line"])
+        if g["plan"]:
+            product_lines.append(_warranty_request(g["plan"]))
 
     warranty_lines = []
     for vid in warranty_order:
@@ -555,12 +586,10 @@ def generate_eu_email(order_number: str) -> dict:
     }
 
     # ── Items with specs — separate devices from warranty ──────────────────
-    _WARRANTY_RE = re.compile(r"apple\s*care|protection\s*plan|warranty|extended\s*service", re.IGNORECASE)
-
     _APPLE_KW = {"apple", "macbook", "ipad", "iphone", "imac", "mac mini", "mac studio", "mac pro", "airpods"}
     _BRAND_KW = ["lenovo", "dell", "hp", "microsoft", "samsung", "asus", "acer", "apple"]
 
-    # Group by variant_id to consolidate duplicate items
+    # Only consolidate devices with the same variant AND requested plan.
     products_grouped = {}
     products_order = []
     warranty_grouped = {}
@@ -582,6 +611,8 @@ def generate_eu_email(order_number: str) -> dict:
         if mpn and mpn.upper().startswith("Z"):
             has_cto_item = True
         vid = raw["productVariantId"]
+        plan = device_protection_plan(raw.get("protection_plan"))
+        product_key = (vid, plan)
 
         if _WARRANTY_RE.search(name):
             if vid in warranty_grouped:
@@ -599,8 +630,8 @@ def generate_eu_email(order_number: str) -> dict:
                 if brand in name_lower:
                     item_brands.add(brand)
 
-            if vid in products_grouped:
-                products_grouped[vid]["qty"] += qty
+            if product_key in products_grouped:
+                products_grouped[product_key]["qty"] += qty
             else:
                 spec_parts = []
                 for key in ("Memory", "Storage", "Color"):
@@ -608,8 +639,9 @@ def generate_eu_email(order_number: str) -> dict:
                     if val:
                         spec_parts.append(val)
                 desc = f"{name} - {', '.join(spec_parts)}" if spec_parts else name
-                products_grouped[vid] = {"desc": desc, "mpn": mpn, "qty": qty, "price_line": _quote_price_line(details)}
-                products_order.append(vid)
+                products_grouped[product_key] = {"desc": desc, "mpn": mpn, "qty": qty,
+                                                 "plan": plan, "price_line": _quote_price_line(details)}
+                products_order.append(product_key)
 
     product_lines = []
     for i, vid in enumerate(products_order):
@@ -622,6 +654,8 @@ def generate_eu_email(order_number: str) -> dict:
             product_lines.append(g["mpn"])
         product_lines.append(g["desc"])
         product_lines.append(g["price_line"])
+        if g["plan"]:
+            product_lines.append(_warranty_request(g["plan"]))
 
     warranty_lines = []
     for vid in warranty_order:
@@ -739,7 +773,6 @@ def generate_us_email(order_number: str) -> dict:
     if "error" in header:
         return header
 
-    _WARRANTY_RE = re.compile(r"apple\s*care|protection\s*plan|warranty|extended\s*service", re.IGNORECASE)
     _APPLE_KW = {"apple", "macbook", "ipad", "iphone", "imac", "mac mini", "mac studio", "mac pro", "airpods"}
     _BRAND_KW = ["lenovo", "dell", "hp", "microsoft", "samsung", "asus", "acer", "apple"]
 
@@ -759,7 +792,7 @@ def generate_us_email(order_number: str) -> dict:
         name = re.sub(r"^.*?\|\s*", "", name)
         mpn = details.get("allwhere_mpn", "")
         vid = raw["productVariantId"]
-        needs_warranty = raw.get("protection_plan", "") not in ("", "No protection plan")
+        plan = device_protection_plan(raw.get("protection_plan"))
 
         if _WARRANTY_RE.search(name):
             warranty_skus.append({"name": name, "qty": qty, "price_line": _quote_price_line(details)})
@@ -779,18 +812,16 @@ def generate_us_email(order_number: str) -> dict:
                 if val:
                     spec_parts.append(val)
 
-            existing = next((p for p in products if p["vid"] == vid), None)
+            existing = next((p for p in products if p["vid"] == vid and p["plan"] == plan), None)
             if existing:
                 existing["qty"] += qty
-                if needs_warranty:
-                    existing["warranty"] = True
             else:
                 products.append({
                     "name": name,
                     "mpn": mpn,
                     "specs": ", ".join(spec_parts),
                     "qty": qty,
-                    "warranty": needs_warranty,
+                    "plan": plan,
                     "vid": vid,
                     "price_line": _quote_price_line(details),
                 })
@@ -883,9 +914,8 @@ def generate_us_email(order_number: str) -> dict:
         if p["specs"]:
             lines.append(p["specs"])
         lines.append(p["price_line"])
-        if p["warranty"]:
-            lines.append("")
-            lines.append("With warranty")
+        if p["plan"]:
+            lines.append(_warranty_request(p["plan"]))
         lines.append("")
 
     if warranty_skus:
@@ -1337,14 +1367,14 @@ def fetch_full_order(order_number):
     for oi in order.get("orderItems", []):
         snap = oi.get("productVariantSnapshot") or {}
         name = snap.get("title") or snap.get("productName") or ""
-        plan = oi.get("protectionPlan")
-        if plan:
-            key = (name, plan)
-            devices[key] = devices.get(key, 0) + int(oi.get("quantity") or 1)
-        elif re.search(r"applecare|warranty|protection|service agreement", name, re.I):
+        plan = device_protection_plan(oi.get("protectionPlan"))
+        if _WARRANTY_RE.search(name):
             lines.append({"name": name, "sku": str(snap.get("sku", "")),
                           "qty": int(oi.get("quantity") or 1),
                           "price": float(snap.get("price") or 0)})
+        elif plan:
+            key = (name, plan)
+            devices[key] = devices.get(key, 0) + int(oi.get("quantity") or 1)
 
     return {
         "order_number": po,

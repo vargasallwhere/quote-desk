@@ -2,3 +2,4 @@
 - [Follow-up confirmation phone](confirmation-phone-source.md) — use the current order’s recipient-info phone, never a generic or previous-order number.
 - [Live status freshness](live-status-freshness.md) — refresh order status independently; never reload a vendor reply or overwrite an unsaved draft to update a badge.
 - [Catalog investigation](catalog-authority.md) — repair catalog access before parsing descriptions; legacy 404 does not establish deletion or migration history.
+- [Warranty source evidence](warranty-source-evidence.md) — plan selection correlates with the pictured shield; UI mapping remains unproven, and insurance is separate.

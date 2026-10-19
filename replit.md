@@ -26,3 +26,7 @@ Read-only verification uses `generate_eu_email`, `generate_uk_email`, or `genera
 New vendor auto-quote drafts must include each item's product-service catalog unit price as `USD 27.85`, without the `Catalog unit price: ` prefix, preserving the existing amount formatting. Apply this to every regional template and warranty item, including valid zero prices. When catalog pricing is unavailable, retain `Catalog unit price unavailable.`; do not substitute an unverified order-snapshot price or change an existing Gmail draft.
 
 Additional browser-side checks: `node tests/order_status_refresh.js`, `node tests/confirmation_load.js`, and `node tests/catalog_display.js`.
+
+Warranty regression checks also include `node tests/warranty_display.js` and the Python warranty tests. All Gmail writes in these checks are mocked, and the tests decode the submitted MIME body.
+
+New quotes preserve the supplied plan wording beside the device, group only matching variant/plan selections, and exclude blank or explicit no-plan selections. Standalone warranty products and the existing enterprise-note heuristic stay separate. Do not invent coverage terms, duration, or price.

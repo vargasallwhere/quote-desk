@@ -23,6 +23,6 @@ Catalog reads validate the returned variant ID and order-snapshot SKU. Successfu
 
 Read-only verification uses `generate_eu_email`, `generate_uk_email`, or `generate_us_email` and the order/ticket GET endpoints. **Do not call `generate_auto_quote_email` or POST `/api/quote-draft` against live Gmail during verification**: those create real drafts.
 
-New vendor auto-quote drafts must include each item's product-service catalog unit price, labeled in USD under the existing price/currency convention. Apply this to every regional template and warranty item. When catalog pricing is unavailable, label it unavailable; do not substitute an unverified order-snapshot price or change an existing Gmail draft.
+New vendor auto-quote drafts must include each item's product-service catalog unit price as `USD 27.85`, without the `Catalog unit price: ` prefix, preserving the existing amount formatting. Apply this to every regional template and warranty item, including valid zero prices. When catalog pricing is unavailable, retain `Catalog unit price unavailable.`; do not substitute an unverified order-snapshot price or change an existing Gmail draft.
 
 Additional browser-side checks: `node tests/order_status_refresh.js`, `node tests/confirmation_load.js`, and `node tests/catalog_display.js`.

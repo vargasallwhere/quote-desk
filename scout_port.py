@@ -104,7 +104,7 @@ def _quote_price_line(details):
     """Catalog unit price only; never substitute an unverified snapshot price."""
     if details.get("catalog_unit_price") is None:
         return "Catalog unit price unavailable."
-    return f"Catalog unit price: USD {details['catalog_unit_price']:,.2f}"
+    return f"USD {details['catalog_unit_price']:,.2f}"
 
 def clean_po(po: str) -> str:
     """Strip trailing ' (2)', ' (3)' etc. and word suffixes like '-GOOD', '-IRON'."""

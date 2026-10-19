@@ -248,10 +248,11 @@ class CatalogTests(unittest.TestCase):
                 if code == 200:
                     indices = [0, 1] if po == "161876-1-JUST" else [2]
                     for i in indices:
-                        self.assertIn(f"Catalog unit price: USD {PRICES[i]:.2f}", result["email_text"])
+                        self.assertIn(f"\nUSD {PRICES[i]:.2f}\n", result["email_text"])
                 else:
                     self.assertIn("Catalog unit price unavailable.", result["email_text"])
                     self.assertNotIn("999.00", result["email_text"])
+                self.assertNotIn("Catalog unit price: ", result["email_text"])
                 if po == "161876-1-JUST":
                     for _, _, mpn, _ in VARIANTS[:2]:
                         self.assertIn(mpn, result["email_text"])
@@ -270,9 +271,10 @@ class CatalogTests(unittest.TestCase):
                     for i in indices:
                         following = text.split(VARIANTS[i][2], 1)[1]
                         item_block = following.split("\n\n", 1)[0]
-                        self.assertIn(f"Catalog unit price: USD {PRICES[i]:.2f}", item_block)
+                        self.assertIn(f"USD {PRICES[i]:.2f}", item_block.splitlines())
                     self.assertNotIn("999.00", text, "Do not use order-snapshot/customer prices")
-                    self.assertEqual(text.count("Catalog unit price:"), len(indices))
+                    self.assertNotIn("Catalog unit price: ", text)
+                    self.assertEqual(sum(line.startswith("USD ") for line in text.splitlines()), len(indices))
 
     def test_missing_catalog_price_is_not_invented_and_explicit_zero_is_valid(self):
         for raw_price in (None, "missing", 0):
@@ -284,7 +286,7 @@ class CatalogTests(unittest.TestCase):
             with patch.object(catalog.requests, "get", return_value=response(data)):
                 details = scout.get_item_details(VARIANTS[0][0], 2, {"sku": "16699", "price": 999})
             price_line = scout._quote_price_line(details)
-            self.assertEqual(price_line, "Catalog unit price: USD 0.00" if raw_price == 0
+            self.assertEqual(price_line, "USD 0.00" if raw_price == 0
                              else "Catalog unit price unavailable.")
             self.assertEqual(details["allwhere_mpn"], "KM3322W-R-UK")
 
@@ -300,7 +302,8 @@ class CatalogTests(unittest.TestCase):
             for builder in (scout.generate_eu_email, scout.generate_uk_email, scout.generate_us_email):
                 text = builder("161876-1-JUST")["email_text"]
                 self.assertIn("5X" if builder == scout.generate_us_email else "5x", text)
-                self.assertEqual(text.count("Catalog unit price: USD 27.85"), 1)
+                self.assertEqual(text.splitlines().count("USD 27.85"), 1)
+                self.assertNotIn("Catalog unit price: ", text)
                 self.assertNotIn("139.25", text)
 
     def test_warranty_catalog_prices_are_included(self):
@@ -313,7 +316,36 @@ class CatalogTests(unittest.TestCase):
         with patch.object(scout.requests, "get", side_effect=requests_get):
             for builder in (scout.generate_eu_email, scout.generate_uk_email, scout.generate_us_email):
                 text = builder("161876-1-JUST")["email_text"]
-                self.assertIn("Dell Warranty\nCatalog unit price: USD 55.70", text)
+                self.assertIn("Dell Warranty\nUSD 55.70", text)
+                self.assertNotIn("Catalog unit price: ", text)
+
+    def test_regional_product_and_warranty_zero_and_unavailable_prices(self):
+        for raw_price in (0, None, "missing"):
+            read = self.mock_reads("161876-1-JUST")
+            def requests_get(url, **kwargs):
+                result = read(url, **kwargs)
+                if "/product-variants/" in url:
+                    data = result.json.return_value
+                    if raw_price == "missing":
+                        data.pop("price")
+                    else:
+                        data["price"] = raw_price
+                    if url.endswith(VARIANTS[1][0]):
+                        data["title"] = "Dell Warranty"
+                return result
+            with patch.object(scout.requests, "get", side_effect=requests_get), \
+                    patch("gmail_auth.get_gmail_service", side_effect=AssertionError("No Gmail verification")):
+                for builder in (scout.generate_eu_email, scout.generate_uk_email, scout.generate_us_email):
+                    with self.subTest(price=raw_price, region=builder.__name__):
+                        text = builder("161876-1-JUST")["email_text"]
+                        expected = "USD 0.00" if raw_price == 0 else "Catalog unit price unavailable."
+                        self.assertEqual(text.splitlines().count(expected), 2)
+                        self.assertIn("Dell Warranty\n" + expected, text)
+                        self.assertNotIn("Catalog unit price: ", text)
+                        self.assertNotIn("999.00", text)
+
+    def test_price_formatter_preserves_thousands_and_decimal_places(self):
+        self.assertEqual(scout._quote_price_line({"catalog_unit_price": 1234.5}), "USD 1,234.50")
 
 
 if __name__ == "__main__":

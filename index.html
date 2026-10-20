@@ -114,7 +114,15 @@ function showCto(t){
 function warrantyHtml(w){
   if(!w)return "—";
   const dev=w.devices.map(d=>`${d.qty} × ${esc(d.name.replace(/^\(UK\) \| |^\(US\) \| /,"").slice(0,48))}… <span class="chip ${/^add/i.test(d.plan)?"ok":"plain"}">${esc(d.plan)}</span>`).join("<br>");
-  const lines=w.lines.map(l=>`<b>${esc(l.name)}</b><small>SKU ${esc(l.sku)} · qty ${l.qty} · $${l.price.toFixed(2)}</small>`).join("");
+  // Display-only copies: never consolidate the order data used by other workflows.
+  const grouped=[],byProduct=new Map();
+  for(const line of w.lines){
+    const key=typeof line.sku==="string"&&line.sku.trim()?JSON.stringify([line.sku,line.name,line.price]):null;
+    const existing=key===null?null:byProduct.get(key);
+    if(existing)existing.qty+=line.qty;
+    else{const entry={...line};grouped.push(entry);if(key!==null)byProduct.set(key,entry)}
+  }
+  const lines=grouped.map(l=>`<b>${l.qty>1?esc(l.qty)+"x ":""}${esc(l.name)}</b><small>SKU ${esc(l.sku)} · Unit price $${l.price.toFixed(2)}</small>`).join("");
   return (dev||"")+(lines?`<p style="margin:6px 0 0">${lines}</p>`:"")||"—"}
 let focusK="";
 function setFocus(k){focusK=k;const set=d=>{if(k)d.documentElement.dataset.focus=k;else delete d.documentElement.dataset.focus};

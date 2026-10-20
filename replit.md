@@ -30,6 +30,8 @@ Additional browser-side checks: `node tests/order_status_refresh.js`, `node test
 
 Warranty regression checks also include `node tests/warranty_display.js` and the Python warranty tests. All Gmail writes in these checks are mocked, and the tests decode the submitted MIME body.
 
+Standalone warranty consolidation is display-only: match nonempty SKU, exact name, and unit price; preserve source order lines for all other workflows. `python3 tests/warranty_browser.py` checks the ten-unit scenario locally with mocked services and saves an ignored screenshot. `--serve` offers the mock fixture only on 127.0.0.1:5073.
+
 New quotes preserve the supplied plan wording beside the device, group only matching variant/plan selections, and exclude blank or explicit no-plan selections. Standalone warranty products and the existing enterprise-note heuristic stay separate. Do not invent coverage terms, duration, or price.
 
 ## Standalone alternative approvals

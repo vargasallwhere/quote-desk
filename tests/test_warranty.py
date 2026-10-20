@@ -225,6 +225,23 @@ class WarrantyTests(unittest.TestCase):
                         self.assertNotIn("Catalog unit price", text)
                         self.assertNotIn("999.00", text)
 
+    def test_standalone_summary_keeps_source_lines_and_order_quantities(self):
+        self.selected = order([
+            item("Plan Alpha", 2),
+            *[item(None, 1, "warranty", "AppleCare Warranty Test") for _ in range(10)],
+            item(None, 3, "warranty", "AppleCare Warranty Test"),
+        ])
+        before = deepcopy(self.selected)
+        summary = scout.fetch_full_order(PO)
+        self.assertEqual(self.selected, before)
+        self.assertEqual([line["qty"] for line in summary["warranty"]["lines"]],
+                         [1] * 10 + [3])
+        self.assertEqual([line["qty"] for line in summary["order_items"]],
+                         [2] + [1] * 10 + [3])
+        self.assertEqual(summary["warranty"]["devices"], [
+            {"name": "Apple MacBook Test", "plan": "Plan Alpha", "qty": 2},
+        ])
+
     def test_existing_thread_or_draft_blocks_every_quote_write(self):
         for country, _, _, _ in REGIONS:
             for labels in ([], ["DRAFT"]):

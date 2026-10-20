@@ -77,7 +77,8 @@ def gmail_error(e):
 @app.get("/")
 def index():
     # Bind the page and its viewer assets to the same release, even behind caches.
-    files = ("static/attachment-preview.js", "static/attachment-preview.css", "package-lock.json")
+    files = ("static/attachment-preview.js", "static/attachment-preview.css",
+             "static/pdf-ocr.js", "static/pdf-ocr-worker.js", "package-lock.json")
     version = hashlib.sha256(b"".join((Path(app.root_path) / f).read_bytes() for f in files)).hexdigest()[:16]
     html = (Path(app.root_path) / "index.html").read_text()
     return Response(html.replace("__VIEWER_VERSION__", version), mimetype="text/html")
@@ -97,9 +98,28 @@ def attachment_renderer(filename):
     return send_from_directory(root, filename,
                                mimetype="text/javascript" if filename.endswith(".mjs") else None)
 
+@app.get("/attachment-ocr/<path:filename>")
+def attachment_ocr(filename):
+    # Fixed, local-only OCR assets. No quote bytes are sent to an OCR endpoint.
+    assets = {
+        "tesseract.min.js": ("tesseract.js/dist", "tesseract.min.js"),
+        "worker.min.js": ("tesseract.js/dist", "worker.min.js"),
+        "eng.traineddata.gz": ("@tesseract.js-data/eng/4.0.0", "eng.traineddata.gz"),
+    }
+    for variant in ("", "-simd", "-relaxedsimd"):
+        for engine in ("", "-lstm"):
+            for suffix in (".wasm.js", ".wasm"):
+                name = f"tesseract-core{variant}{engine}{suffix}"
+                assets[name] = ("tesseract.js-core", name)
+    asset = assets.get(filename)
+    if not asset:
+        return jsonify(error="Not found"), 404
+    root, name = asset
+    return send_from_directory(Path(app.root_path) / "node_modules" / root, name)
+
 @app.after_request
 def fresh_order_responses(response):
-    if request.path in ("/", "/static/attachment-preview.js", "/static/attachment-preview.css") or request.path.startswith(("/attachment-renderer/", "/api/order/", "/api/order-status/", "/api/ticket-info/")):
+    if request.path in ("/", "/static/attachment-preview.js", "/static/attachment-preview.css", "/static/pdf-ocr.js", "/static/pdf-ocr-worker.js") or request.path.startswith(("/attachment-renderer/", "/attachment-ocr/", "/api/order/", "/api/order-status/", "/api/ticket-info/")):
         response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"
     return response

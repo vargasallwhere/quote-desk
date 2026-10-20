@@ -5,29 +5,128 @@ window.AttachmentPreview = window.AttachmentPreview?.ready ? window.AttachmentPr
   let pdfTask, pdfWorker, nativeWorker, pdfDoc, renderTask, renderSerial = 0, pageNumber = 1, pdfScale = 1;
   let deadline, expires, attempt = 0, stage = "request";
   let TextLayer, textTask, textSurface, textReady = false, matchCounts = {};
+  let ocrJob, ocrRender, ocrState = "", ocrPages = new Map();
   function highlightStatus() {
     const status = $("av-matches");
     if (!status) return;
-    status.hidden = !pdfDoc || !textReady;
+    status.hidden = !pdfDoc || (!textReady && !ocrState);
     if (status.hidden) return;
+    if (ocrState && ocrState !== "done") {
+      status.textContent = ocrState;
+      return;
+    }
     const key = document.documentElement.dataset.focus;
     const count = key ? matchCounts[key] || 0 : Object.values(matchCounts).reduce((a, b) => a + b, 0);
     const label = [...document.querySelectorAll(".legend button")].find(b => b.dataset.k === key)?.textContent;
     status.textContent = !textSurface.textContent.trim()
-      ? "No readable text on this page. Scanned PDFs need text recognition before tags can be detected."
+      ? (ocrState === "done" ? "No readable text found by local OCR. Try a clearer scan."
+        : "No readable text on this page. Scanned PDFs need text recognition before tags can be detected.")
       : count ? (label || "Specifications") + ": " + count + " highlighted match" + (count === 1 ? "" : "es") + " on this page."
       : "No " + (label || "specification").toLowerCase() + " matches found on this page.";
+    if (ocrState === "done") status.textContent += " Local OCR — check against the scan.";
   }
   // The same data-focus attribute already drives sidebar/email highlighting.
   new MutationObserver(highlightStatus).observe(document.documentElement,
     {attributes: true, attributeFilter: ["data-focus"]});
   function resetText() {
+    ocrJob?.cancel();
+    ocrJob = null;
+    ocrRender?.cancel();
+    ocrRender = null;
+    ocrState = "";
+    if ($("av-ocr")) $("av-ocr").hidden = true;
     textTask?.cancel();
     textTask = null;
     textReady = false;
     matchCounts = {};
     textSurface?.replaceChildren();
     if ($("av-matches")) $("av-matches").hidden = true;
+  }
+  function paintOCR(result) {
+    textSurface.replaceChildren();
+    matchCounts = {};
+    let text = "";
+    const runs = [];
+    for (const block of result.blocks) for (const paragraph of block.paragraphs || [])
+      for (const line of paragraph.lines || []) {
+        for (const word of line.words || []) {
+          const start = text.length;
+          text += word.text;
+          runs.push({start, end: text.length, word});
+          text += " ";
+        }
+        text += "\n";
+      }
+    // Keep plain recognized text hidden, using explicit word boxes for the
+    // highlights rather than guessing font metrics on a scanned page.
+    const plain = document.createElement("span");
+    plain.className = "av-ocr-plain";
+    plain.textContent = text;
+    textSurface.append(plain);
+    let offset = 0;
+    for (const [value, kind] of hlParts(text)) {
+      const end = offset + value.length;
+      if (kind) {
+        matchCounts[kind] = (matchCounts[kind] || 0) + 1;
+        for (const run of runs) {
+          if (end <= run.start || offset >= run.end) continue;
+          const mark = document.createElement("mark"), box = run.word.bbox;
+          mark.className = "hl hl-" + kind + " av-ocr-mark";
+          mark.style.left = box.x0 / result.width * 100 + "%";
+          mark.style.top = box.y0 / result.height * 100 + "%";
+          mark.style.width = (box.x1 - box.x0) / result.width * 100 + "%";
+          mark.style.height = (box.y1 - box.y0) / result.height * 100 + "%";
+          textSurface.append(mark);
+        }
+      }
+      offset = end;
+    }
+    ocrState = "done";
+    textReady = true;
+    highlightStatus();
+  }
+  async function recognizePage() {
+    const token = serial, draw = renderSerial, number = pageNumber, doc = pdfDoc;
+    const current = () => token === serial && draw === renderSerial;
+    $("av-ocr").hidden = true;
+    ocrState = "Starting local text recognition… You can keep reading or leave this page.";
+    highlightStatus();
+    let raster;
+    try {
+      const {recognize} = await import("/static/pdf-ocr.js?v=" + release);
+      if (!current()) return;
+      const page = await doc.getPage(number);
+      if (!current()) return;
+      const base = page.getViewport({scale: 1});
+      const viewport = page.getViewport({scale: Math.min(2.5,
+        Math.sqrt(8000000 / (base.width * base.height)), 12000 / Math.max(base.width, base.height))});
+      raster = document.createElement("canvas");
+      raster.width = Math.ceil(viewport.width);
+      raster.height = Math.ceil(viewport.height);
+      ocrRender = page.render({canvasContext: raster.getContext("2d"), viewport});
+      await ocrRender.promise;
+      if (!current()) return;
+      ocrRender = null;
+      const job = recognize(raster, percent => {
+        if (!current()) return;
+        ocrState = "Recognizing text locally: " + percent + "%. You can keep reading or leave this page.";
+        highlightStatus();
+      });
+      ocrJob = job;
+      const blocks = await job.promise;
+      if (!current()) return;
+      ocrJob = null;
+      const result = {blocks, width: raster.width, height: raster.height};
+      ocrPages.set(number, result);
+      paintOCR(result);
+    } catch (_) {
+      if (!current()) return;
+      ocrState = "Local text recognition could not finish. The PDF is still readable. Retry recognition or download the quote.";
+      $("av-ocr").hidden = false;
+      highlightStatus();
+    } finally {
+      if (raster) { raster.width = 0; raster.height = 0; }
+    }
   }
   function tagText(layer, content) {
     // Match a joined logical string, then map ranges back into positioned runs.
@@ -103,6 +202,7 @@ window.AttachmentPreview = window.AttachmentPreview?.ready ? window.AttachmentPr
   function dispose() {
     ++serial;
     resetText();
+    ocrPages.clear();
     clearTimeout(deadline);
     if (controller) controller.abort();
     controller = null;
@@ -176,11 +276,19 @@ window.AttachmentPreview = window.AttachmentPreview?.ready ? window.AttachmentPr
         tagText(layer, content);
         textReady = true;
         highlightStatus();
+        if (!content.items.some(item => item.str?.trim())) {
+          if (ocrPages.has(pageNumber)) paintOCR(ocrPages.get(pageNumber));
+          else $("av-ocr").hidden = false;
+        }
       } catch (_) {
         if (token !== serial || draw !== renderSerial) return;
         resetText();
-        $("av-matches").hidden = false;
-        $("av-matches").textContent = "This page is readable, but text detection is unavailable. Tags cannot highlight it.";
+        if (ocrPages.has(pageNumber)) paintOCR(ocrPages.get(pageNumber));
+        else {
+          $("av-matches").hidden = false;
+          $("av-matches").textContent = "This page is readable, but native text detection is unavailable. You can try local text recognition.";
+          $("av-ocr").hidden = false;
+        }
       }
       clearTimeout(deadline);
       $("av-feedback").textContent = "";
@@ -328,6 +436,13 @@ window.AttachmentPreview = window.AttachmentPreview?.ready ? window.AttachmentPr
       matchStatus.setAttribute("role", "status");
       matchStatus.hidden = true;
       $("av-stage").before(matchStatus);
+      const recognizeButton = document.createElement("button");
+      recognizeButton.id = "av-ocr";
+      recognizeButton.textContent = "Recognize text on this page (local only)";
+      recognizeButton.title = "English text recognition runs in your browser. Nothing is uploaded. Results may be inaccurate.";
+      recognizeButton.hidden = true;
+      recognizeButton.onclick = recognizePage;
+      $("av-stage").before(recognizeButton);
     }
     if (!selected) {
       savedScroll = {x: window.scrollX, y: window.scrollY, thread: $("thread").scrollTop};

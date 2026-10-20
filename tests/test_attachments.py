@@ -91,6 +91,18 @@ class AttachmentTests(unittest.TestCase):
         for path in ("package.json", "../app.py", "build/pdf.sandbox.min.mjs"):
             self.assertEqual(self.client.get("/attachment-renderer/" + path).status_code, 404)
 
+    def test_ocr_only_exposes_local_engine_and_model_assets(self):
+        for path in ("tesseract.min.js", "worker.min.js", "eng.traineddata.gz",
+                     "tesseract-core-lstm.wasm.js", "tesseract-core-lstm.wasm",
+                     "tesseract-core-simd-lstm.wasm.js",
+                     "tesseract-core-relaxedsimd-lstm.wasm.js"):
+            with self.subTest(path=path):
+                with self.client.get("/attachment-ocr/" + path) as result:
+                    self.assertEqual(result.status_code, 200)
+                    self.assertEqual(result.headers["Cache-Control"], "no-store")
+        for path in ("package.json", "../app.py", "eng/../../app.py", "README.md"):
+            self.assertEqual(self.client.get("/attachment-ocr/" + path).status_code, 404)
+
     def test_missing_runtime_renderer_is_actionable(self):
         with patch("app.Path.is_file", return_value=False):
             result = self.client.get("/attachment-renderer/build/pdf.min.mjs")

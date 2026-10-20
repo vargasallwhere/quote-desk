@@ -209,6 +209,10 @@ body.attachment-view .split > .panel:first-child {
   opacity: 0.6;
 }
 #av-matches { color: var(--muted, #5f6b7a); font-size: 12px; }
+.av-text .av-ocr-plain { visibility: hidden; }
+#attachment-preview .av-text .av-ocr-mark { position: absolute; }
+#av-ocr { align-self: flex-start; padding: 6px 10px; cursor: pointer; }
+#av-ocr[hidden] { display: none; }
 
 .av-image {
   display: block;

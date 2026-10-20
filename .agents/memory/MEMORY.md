@@ -5,3 +5,4 @@
 - [Warranty source evidence](warranty-source-evidence.md) — plan selection correlates with the pictured shield; UI mapping remains unproven, and insurance is separate.
 - [Attachment rendering](attachment-rendering.md) — a mounted PDF frame can still be blank; verify painted document pixels and a local screenshot.
 - [Proxy origin evidence](proxy-origin-evidence.md) — forwarded-header sanitization was not established; local mismatch reproduction is not original-browser proof.
+- [Local quote OCR](local-ocr-privacy.md) — explicit on-device recognition; treat extracted specifications as uncertain and do not persist quote content.

@@ -4,6 +4,8 @@
   "private": true,
   "description": "Browser-only PDF renderer for the existing Flask Quote Desk",
   "dependencies": {
-    "pdfjs-dist": "^6.4.299"
+    "@tesseract.js-data/eng": "^1.0.0",
+    "pdfjs-dist": "^6.4.299",
+    "tesseract.js": "^7.0.0"
   }
 }

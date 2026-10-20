@@ -1,6 +1,8 @@
 """Quote Desk v1 — read-only. Order details from Allwhere, vendor threads straight from Gmail.
 Reuses Scout Dev's login and order lookup; edits nothing there."""
 import base64, os, sys, time
+import re
+from urllib.parse import quote
 from email.mime.text import MIMEText
 from email.utils import getaddresses, formataddr
 from email.utils import parsedate_to_datetime
@@ -68,6 +70,17 @@ def gmail_error(e):
 @app.get("/")
 def index():
     return send_from_directory(os.path.dirname(__file__), "index.html")
+
+@app.get("/attachment-renderer/<path:filename>")
+def attachment_renderer(filename):
+    # Serve only PDF.js browser assets, never arbitrary dependency files.
+    allowed = filename in ("build/pdf.min.mjs", "build/pdf.worker.min.mjs")
+    allowed = allowed or (
+        filename.startswith(("cmaps/", "standard_fonts/", "wasm/"))
+        and filename.endswith((".bcmap", ".pfb", ".ttf", ".wasm")))
+    if not allowed:
+        return jsonify(error="Not found"), 404
+    return send_from_directory(os.path.join(app.root_path, "node_modules", "pdfjs-dist"), filename)
 
 @app.after_request
 def fresh_order_responses(response):
@@ -224,10 +237,34 @@ def autopilot():
 
 @app.get("/api/attachment/<msg>/<att>")
 def attachment(msg, att):
-    a = gmail().users().messages().attachments().get(userId="me", messageId=msg, id=att).execute()
-    data = base64.urlsafe_b64decode(a["data"] + "=" * (-len(a["data"]) % 4))
-    name, mt = request.args.get("name", "file"), request.args.get("type", "application/octet-stream")
-    return Response(data, mimetype=mt, headers={"Content-Disposition": f'inline; filename="{name}"'})
+    try:
+        a = gmail().users().messages().attachments().get(userId="me", messageId=msg, id=att).execute()
+        data = base64.urlsafe_b64decode(a["data"] + "=" * (-len(a["data"]) % 4))
+    except HttpError as exc:
+        message = ("This attachment is no longer available in Gmail." if exc.resp.status == 404
+                   else "Gmail could not retrieve this attachment. Try again.")
+        return jsonify(error=message), (404 if exc.resp.status == 404 else 502)
+    except Exception:
+        return jsonify(error="Could not retrieve this attachment. Try again."), 502
+    name = re.sub(r'[\x00-\x1f\x7f/\\]', "_", request.args.get("name", "file"))[:240] or "file"
+    claimed = request.args.get("type", "").split(";")[0].strip().lower()
+    # Never serve active content inline, even when a caller supplies a misleading MIME type.
+    signatures = {
+        "application/pdf": data.startswith(b"%PDF-"),
+        "image/png": data.startswith(b"\x89PNG\r\n\x1a\n"),
+        "image/jpeg": data.startswith(b"\xff\xd8\xff"),
+        "image/gif": data.startswith((b"GIF87a", b"GIF89a")),
+        "image/webp": data.startswith(b"RIFF") and data[8:12] == b"WEBP",
+        "image/bmp": data.startswith(b"BM"),
+    }
+    mt = claimed if signatures.get(claimed, False) else "application/octet-stream"
+    fallback = name.encode("ascii", "ignore").decode().replace('"', "_") or "attachment"
+    return Response(data, mimetype=mt, headers={
+        "Content-Disposition": f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{quote(name, safe="")}',
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+        "Cache-Control": "no-store",
+    })
 
 
 if __name__ == "__main__":

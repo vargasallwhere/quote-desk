@@ -5,6 +5,7 @@ Small Flask application with its existing HTML frontend. Keep this structure and
 ## Running on Replit
 
 Dependencies are listed in `requirements.txt`.
+The attachment reader also needs `npm ci --omit=dev` to install the locked PDF.js browser assets; Flask serves them locally. No Node server or build step is needed.
 Run regression checks with `python3 -m unittest discover -s tests`.
 Do not expose a public web workflow: the current app has no authentication and can access a connected Gmail mailbox and customer orders. Add sign-in and authorization before exposing a preview or publishing it. A local-only console workflow may run the existing entry point for verification.
 The existing local development entry point remains `python3 app.py` (localhost port 5070).
@@ -48,3 +49,9 @@ Review sessions use an ignored, private local SQLite file, `.cache/alt-reviews.s
 Only explicit submission sets Send Alt/Pricing Email and invokes the supplied webhook; Quote Desk never sends a separate Gmail notification. Downstream automation owns adding the order external link; do not add a second link here. Omit webhook `multipleSKU` until its accepted contract is verified; the Airtable multiple-SKU checkbox is retained. Checkpoint successful ticket creation before notifying. A webhook failure/unknown outcome must retain the ticket link and prohibit another creation. Ambiguous Airtable writes must remain locked with a check-Airtable warning, never automatically retried.
 
 Run `node tests/alternative_picker.js` plus all existing Python/JS checks. Local Chromium walkthrough: `python3 tests/alt_browser.py` (requires the test-only `playwright` package and Chromium; the Replit path is `/repl/tools/bin/chromium`). It binds only loopback, mocks all external reads/writes, blocks browser requests outside its local fixture, and saves an ignored screenshot under `generated-artifacts/`. Never use a public preview or live writes to verify approvals.
+
+## Attachment comparison
+
+Attachments open inside Vendor email; Back retains the original email/composer DOM and never saves or reloads Gmail. PDF.js renders PDF pages to canvas only (no document scripts, annotations, forms, or links); raster images use temporary object URLs. HTML, SVG, Office files and other unsupported formats are download-only. Attachment responses always force download, use no-store/nosniff and validate supported MIME signatures. Keep this allowlist restrictive.
+
+Run `python3 tests/attachment_browser.py` for the mock-only loopback walkthrough (PDF pixels/pages, image zoom/scroll, earlier messages, Back/reply/scroll restoration, download, failures/retry, active content, late responses after PO/thread/Back changes, status independence, keyboard and phone layout). Screenshots are ignored under `generated-artifacts/`. `python3 tests/attachment_browser.py --serve` offers only the mock fixture on 127.0.0.1:5072 for local screenshots.

@@ -61,7 +61,7 @@ button.hl[aria-pressed="true"]{outline:2px solid var(--fg);outline-offset:1px}
 .snip{color:var(--muted);font-size:12.5px;padding:0 16px 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mb{padding:0 16px 14px}
 .meta{color:var(--muted);font-size:12px;margin-bottom:8px;overflow-wrap:anywhere}
-iframe{width:100%;border:0;background:#fff;border-radius:4px;min-height:60px}
+.mb iframe{width:100%;border:0;background:#fff;border-radius:4px;min-height:60px}
 .att{display:inline-flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:6px 10px;margin:8px 8px 0 0;font-size:12.5px;color:var(--fg);text-decoration:none;background:var(--bg)}
 .chip{font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--warn-soft);color:var(--warn);margin-left:6px}
 .reply{border-top:1px solid var(--line);padding:14px 16px;display:grid;gap:8px}
@@ -76,12 +76,16 @@ iframe{width:100%;border:0;background:#fff;border-radius:4px;min-height:60px}
 .note{color:var(--muted);font-size:12.5px}.empty{padding:24px 16px;color:var(--muted)}
 .err{padding:16px;color:#b3261e}
 select{padding:5px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--fg)}
-</style></head><body>
+</style><link rel="stylesheet" href="/static/attachment-preview.css"><script src="/static/attachment-preview.js"></script></head><body>
 <div class="bar" id="bar"></div>
 <div class="legend"><button class="hl hl-cpu" data-k="cpu" aria-pressed="false">Chip &amp; cores</button><button class="hl hl-mem" data-k="mem" aria-pressed="false">Memory</button><button class="hl hl-ssd" data-k="ssd" aria-pressed="false">Storage</button><button class="hl hl-color" data-k="color" aria-pressed="false">Color</button><button class="hl hl-kb" data-k="kb" aria-pressed="false">Keyboard</button><button class="hl hl-size" data-k="size" aria-pressed="false">Screen size</button><button class="hl hl-mpn" data-k="mpn" aria-pressed="false">MPN</button></div>
 <div class="split">
   <section class="panel"><div class="ph"><h2>Order details</h2><strong class="big mono" id="po"></strong></div><div id="cb" hidden></div><div id="cto" hidden></div><div id="order"><p class="empty">Loading…</p></div><div class="ap" id="ap" hidden><div class="ph" style="padding:0 0 6px;border:0"><h2>Approvals</h2></div><div class="btns"><button class="btn" id="bAlt">Alternative Approval Ticket</button><button class="btn" id="bAr">Manual AR Ticket</button><button class="btn" id="bPr">Price Approval</button></div><div class="btns" id="usBtns" hidden><button class="btn" id="bTd">🇺🇸 TD Synnex Confirmation Email</button><button class="btn" id="bAp">📋 Generate Autopilot Form</button></div><div id="usbox" class="note"></div><div id="apbox"></div></div></section>
-  <section class="panel"><div class="ph"><h2>Vendor email</h2><span class="sync" id="sync"></span></div><div id="thread"></div></section>
+  <section class="panel" id="vendor-panel"><div class="ph"><h2>Vendor email</h2><span class="sync" id="sync"></span></div><div id="thread"></div><section id="attachment-preview" aria-label="Attachment preview" hidden>
+    <div class="av-toolbar"><button class="btn" id="av-back">Back to email</button><strong id="av-name"></strong><a class="btn" id="av-download">Download</a></div>
+    <div class="av-controls" id="av-controls" hidden><span id="av-pages" hidden><button class="btn" id="av-prev" aria-label="Previous page">Previous</button> <output id="av-page" aria-live="polite"></output> <button class="btn" id="av-next" aria-label="Next page">Next</button></span><button class="btn" id="av-fit">Fit width</button><button class="btn" id="av-actual">Actual size</button><button class="btn" id="av-out" aria-label="Zoom out">−</button><output id="av-zoom" aria-live="polite"></output><button class="btn" id="av-in" aria-label="Zoom in">+</button></div>
+    <p id="av-feedback" role="status" aria-live="polite"></p><button class="btn" id="av-retry" hidden>Retry preview</button><div id="av-stage" class="av-stage" tabindex="0" aria-label="Scrollable attachment"></div>
+  </section></section>
 </div>
 <script>
 let cur=decodeURIComponent(location.hash.slice(1));try{cur=cur||localStorage.getItem("qd_last")||""}catch(e){}
@@ -114,7 +118,7 @@ function warrantyHtml(w){
   return (dev||"")+(lines?`<p style="margin:6px 0 0">${lines}</p>`:"")||"—"}
 let focusK="";
 function setFocus(k){focusK=k;const set=d=>{if(k)d.documentElement.dataset.focus=k;else delete d.documentElement.dataset.focus};
-  set(document);document.querySelectorAll("iframe").forEach(f=>{try{set(f.contentDocument)}catch(e){}});
+  set(document);document.querySelectorAll("iframe[data-html]").forEach(f=>{try{set(f.contentDocument)}catch(e){}});
   document.querySelectorAll(".legend button").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.k===k)))}
 document.querySelectorAll(".legend button").forEach(b=>b.onclick=()=>setFocus(focusK===b.dataset.k?"":b.dataset.k));
 function wireHL(ta){
@@ -183,6 +187,7 @@ async function refreshOrderStatus(po=cur,my=req){
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshOrderStatus()});
 window.addEventListener("focus",()=>refreshOrderStatus());
 async function openPO(po,quoteWarnings=[]){
+  AttachmentPreview.clear();
   stopStatusUpdates();
   cur=po;order=null;const my=++req;bar();try{localStorage.setItem("qd_last",po)}catch(e){}$("#po").textContent=po;
   $("#usBtns").hidden=true;$("#usbox").innerHTML="";$("#ap").hidden=true;$("#cb").hidden=true;$("#cto").hidden=true;$("#apbox").innerHTML="";tinfo=null;$("#order").innerHTML='<p class="empty">Loading…</p>';$("#thread").innerHTML='<p class="empty">Loading from Gmail…</p>';$("#sync").textContent="";
@@ -209,6 +214,7 @@ function showOrder(o,quoteWarnings=[]){
 }
 const fmt=d=>{try{return new Date(d).toLocaleString([], {dateStyle:"medium",timeStyle:"short"})}catch(e){return d}};
 function showThreads(t){
+  AttachmentPreview.clear();
   $("#sync").textContent="Synced with Gmail "+new Date(t.synced*1000).toLocaleTimeString();
   if(!t.threads.length){$("#thread").innerHTML='<div class="empty">No Gmail thread yet for this PO.<p><button class="btn primary" id="qd">Draft quote request email</button> <span class="note" id="qs"></span></p></div>';
     $("#qd").onclick=async()=>{const b=$("#qd");b.disabled=true;$("#qs").textContent="Creating draft in Gmail…";
@@ -216,18 +222,19 @@ function showThreads(t){
       if(!r.ok){$("#qs").textContent=j.error||"Failed";b.disabled=false;return}openPO(cur,j.catalog_warnings||[])};return}
   const sel=t.threads.length>1?`<div class="ph"><span class="sync">${t.threads.length} threads match this PO</span><select id="ts">${t.threads.map((x,i)=>`<option value="${i}">${esc(x.messages[0].subject)} · ${x.messages.length} msg · ${fmt(x.messages.at(-1).date)}</option>`).join("")}</select></div>`:"";
   $("#thread").innerHTML=sel+'<div id="msgs"></div><div id="reply" class="reply"></div>';
-  const draw=i=>{const th=t.threads[i];$("#msgs").innerHTML=th.messages.map((m,j,a)=>msgHtml(m,j===a.length-1)).join("");wire();composer(th,t.drafts)};
+   const draw=i=>{AttachmentPreview.clear();const th=t.threads[i];$("#msgs").innerHTML=th.messages.map((m,j,a)=>msgHtml(m,j===a.length-1)).join("");wire();composer(th,t.drafts)};
   draw(0);if($("#ts"))$("#ts").onchange=e=>draw(+e.target.value);
 }
 function msgHtml(m,open){
   const draft=m.labels.includes("DRAFT"),plain=(m.text||"").replace(/\s+/g," ").slice(0,140);
-  const atts=m.attachments.map(a=>`<a class="att" target="_blank" href="/api/attachment/${m.id}/${encodeURIComponent(a.id)}?name=${encodeURIComponent(a.name)}&type=${encodeURIComponent(a.type)}">📎 ${esc(a.name)}</a>`).join("");
+  const atts=m.attachments.map(a=>`<a class="att" data-name="${esc(a.name)}" href="/api/attachment/${encodeURIComponent(m.id)}/${encodeURIComponent(a.id)}?name=${encodeURIComponent(a.name)}&amp;type=${encodeURIComponent(a.type)}">📎 ${esc(a.name)}</a>`).join("");
   const body=m.html?`<iframe sandbox="allow-same-origin" data-html="${esc(m.html)}"></iframe>`:`<pre style="white-space:pre-wrap;font:inherit;margin:0">${hl(m.text)}</pre>`;
   return `<div class="msg" data-open="${open}"><div class="mh"><b>${esc(m.from.replace(/<.*>/,""))||"—"}${draft?'<span class="chip">Draft</span>':""}</b><span>${fmt(m.date)}</span></div>
    <div class="snip">${esc(plain)}</div>
    <div class="mb"><div class="meta">To: ${esc(m.to)}${m.cc?" · Cc: "+esc(m.cc):""}</div>${body}<div>${atts}</div></div></div>`;
 }
 function wire(){
+  document.querySelectorAll(".att").forEach(a=>a.onclick=e=>{e.preventDefault();AttachmentPreview.open(a)});
   document.querySelectorAll(".msg").forEach(el=>{
     const set=o=>{el.dataset.open=o;el.querySelector(".mb").hidden=!o;el.querySelector(".snip").hidden=o;
       if(o)el.querySelectorAll("iframe[data-html]").forEach(f=>{if(!f.dataset.done){f.dataset.done=1;f.srcdoc=f.dataset.html;
@@ -289,7 +296,6 @@ function composer(th,drafts){
 }
 </script><script>
 function quoteComposer(th,d,draftId){
-  $("#msgs").innerHTML="";
   $("#reply").innerHTML=`<div class="note" style="margin-bottom:4px">Quote request to the vendor. It is a draft in your Gmail and has not been sent.</div>
    <input id="rto" value="${esc(d.to)}" aria-label="To"><input id="rcc" value="${esc(d.cc)}" placeholder="Cc" aria-label="Cc"><input id="rsub" value="${esc(d.subject)}" aria-label="Subject">
    <textarea id="rbody" aria-label="Quote request">${esc(d.text)}</textarea>

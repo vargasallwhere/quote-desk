@@ -1,0 +1,289 @@
+/*
+ * Quote Desk attachment reader
+ * Loaded alongside the existing inline styles; all rules are intentionally
+ * limited to attachment surfaces and the opt-in attachment-view state.
+ */
+
+#vendor-panel,
+#attachment-preview,
+#attachment-preview *,
+body.attachment-view .split > .panel:first-child {
+  min-width: 0;
+}
+
+/* The native hidden state must take precedence over the panel display rules. */
+#attachment-preview[hidden],
+#thread[hidden],
+#av-feedback[hidden],
+#av-retry[hidden] {
+  display: none !important;
+}
+.av-controls[hidden] { display: none !important; }
+
+#attachment-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px 16px;
+  overflow: hidden;
+}
+
+#vendor-panel {
+  overflow: hidden;
+}
+
+#vendor-panel > .ph {
+  flex-wrap: wrap;
+}
+
+.av-toolbar,
+.av-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.av-toolbar {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 0 0 11px;
+  border-bottom: 1px solid var(--line, #dde2e8);
+}
+
+#av-back,
+#av-download,
+.av-controls button,
+.av-controls select,
+#av-retry {
+  min-height: 34px;
+  border: 1px solid var(--line, #dde2e8);
+  border-radius: 6px;
+  background: var(--panel, #fff);
+  color: var(--fg, #1b2430);
+  font: inherit;
+}
+
+#av-back,
+.av-controls button,
+#av-retry {
+  padding: 6px 10px;
+  font-weight: 600;
+}
+
+#av-back:hover,
+.av-controls button:hover,
+#av-retry:hover,
+#av-download:hover {
+  border-color: var(--accent, #0f5f6b);
+  background: var(--accent-soft, #e0f0f2);
+}
+
+#av-back:focus-visible,
+#av-download:focus-visible,
+.av-controls button:focus-visible,
+.av-controls select:focus-visible,
+#av-retry:focus-visible {
+  outline: 2px solid var(--accent, #0f5f6b);
+  outline-offset: 2px;
+}
+
+#av-name {
+  display: flex;
+  align-items: center;
+  flex: 1 1 220px;
+  min-width: 0;
+  gap: 7px;
+  color: var(--muted, #5f6b7a);
+  font: 12px/1.4 var(--mono, ui-monospace, Menlo, monospace);
+  overflow-wrap: anywhere;
+}
+
+#av-name strong {
+  overflow: hidden;
+  color: var(--fg, #1b2430);
+  font: 600 13px/1.4 var(--sans, system-ui, sans-serif);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#av-download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  color: var(--accent, #0f5f6b);
+  font-size: 12.5px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.av-controls {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.av-controls button {
+  min-width: 36px;
+  padding: 4px 9px;
+  font-family: var(--mono, ui-monospace, Menlo, monospace);
+  font-size: 13px;
+}
+
+.av-controls select {
+  padding: 5px 8px;
+  font-size: 12.5px;
+}
+
+.av-stage {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  width: 100%;
+  height: clamp(380px, calc(100dvh - 250px), 860px);
+  min-height: 280px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line, #dde2e8);
+  border-radius: 7px;
+  background:
+    linear-gradient(45deg, color-mix(in srgb, var(--line, #dde2e8) 24%, transparent) 25%, transparent 25%,
+      transparent 75%, color-mix(in srgb, var(--line, #dde2e8) 24%, transparent) 75%),
+    linear-gradient(45deg, color-mix(in srgb, var(--line, #dde2e8) 24%, transparent) 25%, transparent 25%,
+      transparent 75%, color-mix(in srgb, var(--line, #dde2e8) 24%, transparent) 75%),
+    var(--bg, #f3f5f7);
+  background-position: 0 0, 8px 8px;
+  background-size: 16px 16px;
+  scrollbar-color: var(--muted, #5f6b7a) transparent;
+}
+
+.av-pdf {
+  display: block;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+}
+
+.av-image {
+  display: block;
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: none;
+  object-fit: contain;
+  object-position: top center;
+  background: var(--panel, #fff);
+  box-shadow: 0 1px 5px color-mix(in srgb, var(--fg, #1b2430) 16%, transparent);
+}
+
+#av-feedback {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 20px;
+  color: var(--muted, #5f6b7a);
+  font-size: 12.5px;
+}
+
+#av-feedback[role="alert"],
+#av-feedback.is-error {
+  color: #b3261e;
+}
+
+body.attachment-view {
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
+
+body.attachment-view .split {
+  align-items: stretch;
+}
+
+body.attachment-view .split > .panel:first-child {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--muted, #5f6b7a) transparent;
+}
+
+body.attachment-view #vendor-panel {
+  width: 100%;
+  min-height: 0;
+}
+
+body.attachment-view #vendor-panel #attachment-preview {
+  width: 100%;
+}
+
+@media (max-width: 820px) {
+  body.attachment-view {
+    padding: 10px;
+  }
+
+  body.attachment-view .split {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  body.attachment-view .split > .panel:first-child {
+    position: static;
+    max-height: min(42dvh, 360px);
+  }
+
+  #attachment-preview {
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .av-stage {
+    height: clamp(320px, calc(100dvh - 300px), 680px);
+    min-height: 240px;
+  }
+}
+
+@media (max-width: 480px) {
+  #attachment-preview {
+    padding: 10px;
+  }
+
+  .av-toolbar {
+    align-items: stretch;
+    gap: 7px;
+  }
+
+  #av-name {
+    order: -1;
+    flex-basis: 100%;
+  }
+
+  .av-toolbar #av-back,
+  .av-toolbar #av-download {
+    flex: 1 1 auto;
+  }
+
+  .av-controls {
+    justify-content: flex-start;
+  }
+
+  .av-stage {
+    height: calc(100dvh - 330px);
+    min-height: 220px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #attachment-preview *,
+  #vendor-panel * {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

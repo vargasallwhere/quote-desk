@@ -3,5 +3,6 @@ __pycache__/
 .env
 *token*.json
 /.cache/alt-reviews.sqlite3*
+/.cache/depot-notifications.sqlite3*
 /generated-artifacts/
 /node_modules/

@@ -54,11 +54,33 @@ def png():
 @contextmanager
 def fixture(port=0):
     with order_fixture(port) as (base, mode, writes, service):
+        import app
+        # Exercise a genuinely incomplete HTTP body, not just a mocked rejected
+        # Response method. Navigational Download of the exact URL remains intact.
+        original_wsgi = app.app.wsgi_app
+        def interrupt_body(environ, start_response):
+            if (mode.get("interrupt_body") and environ.get("PATH_INFO", "").startswith("/api/attachment/")
+                    and environ.get("HTTP_X_ATTACHMENT_PREVIEW") == "1"):
+                captured = {}
+                def capture(status, headers, exc_info=None):
+                    captured.update(status=status, headers=headers)
+                result = original_wsgi(environ, capture)
+                try:
+                    data = b"".join(result)
+                finally:
+                    if hasattr(result, "close"):
+                        result.close()
+                start_response(captured["status"], captured["headers"])
+                return [data[:20]]  # Leave the original, larger Content-Length.
+            return original_wsgi(environ, start_response)
+        app.app.wsgi_app = interrupt_body
         threads = service.users.return_value.threads.return_value
         original = threads.get.return_value.execute.return_value
         message = original["messages"][0]
+        message["id"] = "18c921a6f52e4b0d"
+        message["payload"]["parts"][0]["body"]["attachmentId"] = "ANGjdJ_" + "q7K2x-P9_" * 90
         earlier = copy.deepcopy(message)
-        earlier["id"] = "earlier"
+        earlier["id"] = "18c921a6f52e4b0e"
         earlier["payload"]["parts"] = [
             {"mimeType": mime, "filename": name, "body": {"attachmentId": ident}}
             for ident, mime, name in [
@@ -71,7 +93,7 @@ def fixture(port=0):
                 ("failure", "application/pdf", "unavailable.pdf"),
                 ("slow", "application/pdf", "slow.pdf"),
                 ("earlier-pdf", "application/pdf", "earlier-quote.pdf"),
-                ("unicode", "application/pdf", "quote ∙ sample.pdf"),
+                ("ANGjdJ_" + "m8K3z-Q6_" * 90, "application/pdf", "quote ∙ sample.pdf"),
             ]]
         original["messages"].insert(0, earlier)
         threads.list.return_value.execute.return_value = {"threads": [{"id": "threadTest"}, {"id": "second"}]}
@@ -98,6 +120,7 @@ def fixture(port=0):
             yield base, mode, writes, service
         finally:
             mode["release"].set()
+            app.app.wsgi_app = original_wsgi
 
 
 def walkthrough():

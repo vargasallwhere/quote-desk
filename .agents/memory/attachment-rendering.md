@@ -14,3 +14,9 @@ Do not treat a passing current-source preview as proof that a published attachme
 **Why:** The user's separate-tab screenshot matched the preceding link behavior, while current source painted the same mocked flow successfully. Those observations alone cannot identify which release an external browser served.
 
 **How to apply:** Distinguish local reproduction from published-version evidence, and report remaining merge/publication/reload requirements without claiming a live fix.
+
+Treat “Failed to fetch” as ambiguous until the failing stage is known.
+
+**Why:** Local Chromium produces that exact wording both for an aborted attachment request and for an interrupted response body. A matching viewer fingerprint rules out assuming stale assets, not either network failure.
+
+**How to apply:** Separate request, body, renderer and worker/document failures using fixed safe codes. Compare preview and Download for the same file; unrelated successful image requests do not establish PDF retrieval.

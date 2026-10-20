@@ -1,6 +1,14 @@
 # STATUS 2026-09-29: ported. Runs standalone (tested locally with env logins, no Scout Dev).
 `app.py` now uses `scout_port.py` (functions copied from Scout Dev, logins from env) and `gmail_auth.py` (env token).
-The Alternative Approval, Price Approval and Autopilot buttons hide themselves unless `SCOUT_URL` is set.
+Alternative Approval Ticket now runs standalone; only Price Approval and Autopilot remain hidden without `SCOUT_URL`. See `ALTERNATIVE_APPROVALS.md` for configuration and safe verification.
+
+## Standalone Alternative Approval — 2026-10-20
+
+The supplied focused device parser, alternative enrichment, review fields, Airtable mapping and automated-approvals webhook contract are ported into the existing Flask/HTML app. Scout's startup jobs, desktop paths and unrelated workflows are not imported. Same-origin reviews are isolated, expire after two hours and retain submission locks/results across process restarts. The source UI is adapted to a wide dedicated tab.
+
+Only explicit submission can create a ticket and trigger notification. Missing settings and unmapped collaborators block writes. Successful creation survives webhook failures as partial success with its ticket link. Unknown write outcomes are locked with a check-Airtable warning. No automatic write retries, order external links, or Gmail notification path were added. The contradictory webhook `multipleSKU` field is omitted, while the Airtable checkbox remains.
+
+Regression and local Chromium verification use mocked order, Airtable, webhook and Gmail services only. No live records, notifications, Gmail writes, public preview or deployment are used. Historical notes below describe earlier states, not current behavior; in particular, the vendor-email price experiment below was superseded by the current no-price rules in `replit.md`.
 
 ## Catalog verification — 2026-10-07
 

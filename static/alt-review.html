@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f3f1eb">
+  <title>Alternate approval · Quote Desk</title>
+  <link rel="stylesheet" href="/alt-review-assets/alt-review.css">
+  <script src="/alt-review-assets/alt-review.js" defer></script>
+</head>
+<body>
+  <header class="rv-top-banner">
+    <a class="rv-wordmark" href="/" aria-label="Quote Desk home"><span class="wordmark-mark">Q</span> Quote Desk</a>
+    <span class="top-context">PROCUREMENT <span aria-hidden="true">/</span> ALTERNATES</span>
+  </header>
+
+  <main class="page-shell">
+    <section class="rv-card-header" aria-labelledby="page-title">
+      <div class="header-kicker"><span class="kicker-dot"></span> VENDOR ALTERNATIVE REVIEW</div>
+      <div class="header-main">
+        <div>
+          <h1 id="page-title">Alternate approval request</h1>
+          <p class="rv-card-header-subtitle">Review every detail before creating a ticket. Your Gmail drafts are not changed.</p>
+        </div>
+        <div class="header-ref" aria-label="Review session">
+          <span class="ref-label">SESSION</span>
+          <span id="rv-session-ref" class="ref-value">Loading…</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="notice notice-warning" id="rv-notification-warning" role="note">
+      <span class="notice-symbol" aria-hidden="true">!</span>
+      <div><strong>Customer notification will be sent.</strong> Submitting creates an Airtable ticket and triggers the customer notification email. Check the details carefully before continuing.</div>
+    </div>
+    <div id="rv-state-message" class="notice notice-state hidden" role="status" aria-live="polite"></div>
+    <div id="rv-errors" class="notice notice-error hidden" role="alert"></div>
+    <div id="rv-mapping-errors" class="notice notice-mapping hidden" role="status"></div>
+    <div id="rv-unverified" class="notice notice-unverified" role="note">
+      <span class="notice-symbol" aria-hidden="true">?</span>
+      <div><strong>Confirm the alternative specifications.</strong> Parsed values and regional defaults are editable suggestions, not verified catalog facts. Unknown values are left blank; confirm each field before submitting.</div>
+    </div>
+
+    <form id="rv-form" novalidate>
+      <section class="rv-section" aria-labelledby="order-heading">
+        <div class="section-heading">
+          <span class="section-index">01</span>
+          <div><h2 id="order-heading">Order info</h2><p>Context from the original request</p></div>
+          <span class="section-tag">SOURCE</span>
+        </div>
+        <div class="rv-row-3">
+          <div class="rv-field"><label for="rv-order">Order #</label><output id="rv-order" class="rv-static">—</output></div>
+          <div class="rv-field"><label for="rv-org">Org</label><output id="rv-org" class="rv-static rv-dim">—</output></div>
+          <div class="rv-field"><label for="rv-om">Assigned to (OM)</label><output id="rv-om" class="rv-static rv-dim">—</output></div>
+        </div>
+        <div class="rv-row-2 requested-row">
+          <div class="rv-field">
+            <label for="rv-requested-by">Requested by (Procurement) <span class="rv-req" aria-hidden="true">*</span><span class="sr-only"> required</span></label>
+            <select id="rv-requested-by" class="rv-input" name="requested_by" required disabled>
+              <option value="">Select a requester</option>
+            </select>
+            <p id="rv-requested-by-hint" class="field-hint">Choose the procurement owner responsible for this ticket.</p>
+          </div>
+          <div class="rv-field field-note"><span class="note-label">QUOTE DESK</span><span>Order details are supplied by the original review session.</span></div>
+        </div>
+      </section>
+
+      <section class="rv-section" aria-labelledby="action-heading">
+        <div class="section-heading">
+          <span class="section-index">02</span>
+          <div><h2 id="action-heading">Action request</h2><p>What is driving this alternative?</p></div>
+        </div>
+        <div class="rv-row-3">
+          <div class="rv-field"><label>Request type</label><output class="rv-static">Alternate approval</output></div>
+          <div class="rv-field">
+            <label for="rv-alt-type">Alternate type <span class="rv-req" aria-hidden="true">*</span><span class="sr-only"> required</span></label>
+            <select id="rv-alt-type" class="rv-input" name="alt_type" required disabled>
+              <option>Out of stock / backordered</option><option>CTO device</option><option>EOL device</option><option>Build / model does not exist</option><option>Shipping speed unavailable</option><option>Unavailable in region</option>
+            </select>
+          </div>
+          <div class="rv-field">
+            <label for="rv-alt-subtype">Alt sub-type</label>
+            <select id="rv-alt-subtype" class="rv-input" name="alt_subtype" disabled>
+              <option>Model unavailable</option><option>Color unavailable</option><option>Keyboard language unavailable</option><option>Storage (SSD) unavailable</option><option>Processor unavailable</option><option>Display unavailable</option><option>Memory (RAM) unavailable</option><option>Other</option>
+            </select>
+          </div>
+        </div>
+        <div id="rv-lead-time-row" class="lead-time-panel hidden">
+          <div class="lead-time-icon" aria-hidden="true">↗</div>
+          <div class="rv-field">
+            <label for="rv-lead-time">Estimated lead time <span id="rv-lead-time-required" class="optional-label">for CTO / backorder</span></label>
+            <input id="rv-lead-time" type="text" class="rv-input" name="lead_time" placeholder="e.g. 3–5 weeks" disabled>
+          </div>
+          <p>Include the best current estimate for the customer.</p>
+        </div>
+      </section>
+
+      <section class="rv-section" aria-labelledby="requested-heading">
+        <div class="section-heading">
+          <span class="section-index">03</span>
+          <div><h2 id="requested-heading">Requested item</h2><p>Original SKU details</p></div>
+        </div>
+        <div class="rv-row-2 requested-item-row">
+          <div class="rv-field">
+            <label for="rv-req-sku">Requested SKU <span class="rv-req" aria-hidden="true">*</span><span class="sr-only"> required</span></label>
+            <input id="rv-req-sku" name="requested_sku" type="text" class="rv-input" placeholder="Allwhere SKU" required disabled>
+          </div>
+          <div class="rv-field rv-field-checkbox">
+            <label for="rv-multi-skus">Multiple SKUs?</label>
+            <input id="rv-multi-skus" name="multiple_skus" type="checkbox" class="rv-checkbox" disabled>
+          </div>
+        </div>
+      </section>
+
+      <section class="rv-section" aria-labelledby="device-heading">
+        <div class="section-heading">
+          <span class="section-index">04</span>
+          <div><h2 id="device-heading">Alternative device</h2><p>Confirm the exact configuration and pricing</p></div>
+          <span class="section-tag">TICKET DETAILS</span>
+        </div>
+        <div class="rv-grid">
+          <div class="rv-field"><label for="rv-device-type">Device type <span class="rv-req" aria-hidden="true">*</span><span class="sr-only"> required</span></label><select id="rv-device-type" name="device_type" class="rv-input" required disabled><option>Laptop</option><option>Tablet</option><option>Mobile Phone</option><option>Other</option></select></div>
+          <div class="rv-field"><label for="rv-make">Make <span class="rv-req" aria-hidden="true">*</span><span class="sr-only"> required</span></label><input id="rv-make" name="make" type="text" class="rv-input" placeholder="e.g. Apple" required disabled></div>
+          <div class="rv-field"><label for="rv-model">Model <span class="rv-req" aria-hidden="true">*</span><span class="sr-only"> required</span></label><input id="rv-model" name="model" type="text" class="rv-input" placeholder="e.g. MacBook Air" required disabled></div>
+          <div class="rv-field"><label for="rv-display">Display size <span class="rv-req" aria-hidden="true">*</span><span class="sr-only"> required</span></label><input id="rv-display" name="display_size" type="text" class="rv-input" placeholder='e.g. 13"' required disabled></div>
+          <div class="rv-field"><label for="rv-processor">Processor <span class="rv-req" aria-hidden="true">*</span><span class="sr-only"> required</span></label><input id="rv-processor" name="processor" type="text" class="rv-input" placeholder="e.g. M4 Pro" required disabled></div>
+          <div class="rv-field"><label for="rv-memory">Memory <span class="rv-req" aria-hidden="true">*</span><span class="sr-only"> required</span></label><input id="rv-memory" name="memory" type="text" class="rv-input" placeholder="e.g. 16 GB" required disabled></div>
+          <div class="rv-field"><label for="rv-storage">Storage <span class="rv-req" aria-hidden="true">*</span><span class="sr-only"> required</span></label><input id="rv-storage" name="storage" type="text" class="rv-input" placeholder="e.g. 256 GB" required disabled></div>
+          <div class="rv-field"><label for="rv-color">Color <span class="rv-req" aria-hidden="true">*</span><span class="sr-only"> required</span></label><input id="rv-color" name="color" type="text" class="rv-input" placeholder="e.g. Midnight" required disabled></div>
+          <div class="rv-field"><label for="rv-keyboard">Keyboard language <span class="rv-req" aria-hidden="true">*</span><span class="sr-only"> required</span></label><input id="rv-keyboard" name="keyboard_language" type="text" class="rv-input" required disabled></div>
+          <div class="rv-field"><label for="rv-country">SKU country / region <span class="rv-req" aria-hidden="true">*</span><span class="sr-only"> required</span></label><input id="rv-country" name="sku_country" type="text" class="rv-input" required disabled></div>
+          <div class="rv-field"><label for="rv-mpn">MPN <span class="optional-label">if applicable</span></label><input id="rv-mpn" name="mpn" type="text" class="rv-input" placeholder="e.g. MXW73LL/A" disabled></div>
+          <div class="rv-field price-field"><label for="rv-price">Price (USD) <span class="rv-req" aria-hidden="true">*</span><span class="sr-only"> required</span></label><div class="price-input"><span aria-hidden="true">$</span><input id="rv-price" name="price" type="text" inputmode="decimal" class="rv-input" placeholder="0.00" required disabled></div><p class="field-hint">Enter a finite, non-negative amount in USD.</p></div>
+        </div>
+      </section>
+      <div class="bottom-space" aria-hidden="true"></div>
+    </form>
+  </main>
+
+  <footer class="rv-footer">
+    <div class="footer-inner">
+      <div class="footer-copy"><span class="footer-lock" aria-hidden="true">●</span><span><strong>Review before sending</strong><small>Submitting sends the customer notification.</small></span></div>
+      <div class="footer-actions"><span id="rv-submit-status" class="rv-status" role="status" aria-live="polite"></span><button id="rv-submit-btn" class="rv-submit-btn" type="submit" form="rv-form" disabled><span>Submit to Airtable</span><span class="button-arrow" aria-hidden="true">→</span></button></div>
+    </div>
+  </footer>
+
+  <section id="rv-result" class="result-card hidden" role="status" aria-live="polite">
+    <div class="result-mark" aria-hidden="true">✓</div>
+    <div><h2 id="rv-result-title">Ticket created</h2><p id="rv-result-message"></p><a id="rv-airtable-link" href="#" target="_blank" rel="noopener noreferrer" class="result-link hidden">Open ticket in Airtable <span aria-hidden="true">↗</span></a><p id="rv-no-duplicate" class="do-not-duplicate hidden">Do not submit again or create another ticket for this request.</p></div>
+  </section>
+</body>
+</html>

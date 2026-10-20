@@ -12,6 +12,8 @@ from scout_port import (fetch_full_order, build_confirmation_email, get_order_in
                         generate_auto_quote_email, fetch_order_status)
 
 app = Flask(__name__)
+from alt_reviews import register as register_alt_reviews
+register_alt_reviews(app, lambda po: get_order_info_for_ticket(po))
 _svc = {}
 
 
@@ -165,7 +167,7 @@ def config():
 
 @app.before_request
 def scout_only():
-    if not SCOUT and request.path in ("/api/alt-review", "/api/price-review", "/api/autopilot"):
+    if not SCOUT and request.path in ("/api/price-review", "/api/autopilot"):
         return jsonify({"error": "This button needs Scout Dev, which only runs on Sara's Mac."}), 503
 
 
@@ -185,28 +187,6 @@ def ticket_info(po):
 def _header(info):
     return {k: info.get(k, "") for k in ("org_name", "order_manager_name", "order_manager_email",
                                           "procurement_manager_email", "procurement_manager_name")} | {"is_rush": info.get("is_rush", False)}
-
-
-@app.post("/api/alt-review")
-def alt_review():
-    """Same as Scout Dev's Alternative Approval: parse the pasted alternative, open its review page."""
-    d = request.get_json()
-    info = get_order_info_for_ticket(d["po"])
-    items = [info["items"][i] for i in d["items"]]
-    country = "uk" if "kingdom" in (info.get("shipping_country") or "").lower() else ("us" if "states" in (info.get("shipping_country") or "").lower() else "")
-    parsed = _scout("/parse-alt-description", {"text": d["text"], "country": country}) if d.get("text", "").strip() else {}
-    p = items[0]
-    mpn = parsed.get("mpn") or p.get("mpn") or ""
-    review = {**_header(info), "order_number": d["po"], "requested_sku": p.get("sku", ""), "multiple_skus": len(items) > 1,
-              "alt_type": "CTO device" if mpn.upper().startswith("Z") else "Out of stock / backordered",
-              "alt_subtype": "Model unavailable", "device_type": _device_type(p.get("product_name", "")),
-              "make": parsed.get("make") or ("Apple" if "apple" in p.get("product_name", "").lower() else ""),
-              "model": parsed.get("model", ""), "display_size": parsed.get("display_size", ""), "processor": parsed.get("processor", ""),
-              "memory": parsed.get("memory", ""), "storage": parsed.get("storage", ""), "color": parsed.get("color", ""),
-              "mpn": parsed.get("mpn", ""), "price": parsed.get("price", ""),
-              "keyboard_language": parsed.get("keyboard_language", country.upper()), "sku_country": parsed.get("sku_country", country.upper())}
-    sid = _scout("/review-session", review)["session_id"]
-    return jsonify({"url": f"{SCOUT}/review-v2?session={sid}"})
 
 
 @app.post("/api/price-review")

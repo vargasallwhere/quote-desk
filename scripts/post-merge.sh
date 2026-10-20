@@ -10,3 +10,5 @@ python3 -m unittest discover -s tests
 node tests/order_status_refresh.js
 node tests/confirmation_load.js
 node tests/catalog_display.js
+node tests/warranty_display.js
+node tests/alternative_picker.js

@@ -316,10 +316,13 @@ function picker(withText,btnLabel,endpoint){
   $("#apGo").onclick=async()=>{
     const idx=[...document.querySelectorAll("#apbox input:checked")].map(x=>+x.value);
     if(!idx.length){$("#apStat").textContent="Select at least one item.";return}
-    const w=window.open("","_blank");$("#apStat").textContent="Opening…";
+    const w=window.open("","_blank");
+    if(!w){$("#apStat").textContent="The review tab was blocked. Allow popups for Quote Desk, then click again.";return}
+    w.opener=null;$("#apGo").disabled=true;$("#apStat").textContent="Opening…";
     try{const r=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({po:cur,items:idx,text:withText?$("#apText").value:""})});
       const j=await r.json();if(!r.ok||!j.url)throw new Error(j.error||"failed");w.location=j.url;$("#apStat").textContent=""}
-    catch(e){if(w)w.close();$("#apStat").textContent="Could not open: "+e.message+" Is Scout Dev running?"}}}
+    catch(e){if(w)w.close();$("#apStat").textContent="Could not open: "+e.message+(endpoint==="/api/alt-review"?"":" Is Scout Dev running?")}
+    finally{if($("#apGo"))$("#apGo").disabled=false}}}
 $("#bAlt").onclick=()=>picker(true,"Open alternative review","/api/alt-review");
 $("#bPr").onclick=()=>picker(false,"Open price approval review","/api/price-review");
 $("#bAr").onclick=()=>{
@@ -347,5 +350,5 @@ $("#bAp").onclick=async()=>{
     const j=await r.json();if(!r.ok||!j.url)throw new Error(j.error||"failed");w.location=j.url;box.textContent="Opened the Autopilot form in a new tab."}
   catch(e){if(w)w.close();box.textContent="Could not generate it: "+e.message}};
 </script><script>
-fetch("/api/config").then(r=>r.json()).then(c=>{if(!c.scout)["bAlt","bPr","bAp"].forEach(id=>{const b=document.getElementById(id);if(b)b.hidden=true})}).catch(()=>{});
+fetch("/api/config").then(r=>r.json()).then(c=>{if(!c.scout)["bPr","bAp"].forEach(id=>{const b=document.getElementById(id);if(b)b.hidden=true})}).catch(()=>{});
 </script>

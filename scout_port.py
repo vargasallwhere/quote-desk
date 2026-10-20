@@ -262,6 +262,7 @@ def get_order_header(order_number: str) -> dict:
     return {
         "order_number":        order_number,
         "order_id":            order.get("id", ""),
+        "resolved_order_number": po_clean,
         "color_swap_approved": bool(order.get("deviceColorSwapApproved", False)),
         "lead_time_approved":  bool(order.get("flexibleLeadTimeApproved", False)),
         "checkout_notes":      (order.get("checkoutNotes") or "").strip(),
@@ -1107,6 +1108,7 @@ def get_order_info_for_ticket(order_number: str) -> dict:
     return {
         "order_number":        header["order_number"],
         "org_name":            header["org_name"],
+        "resolved_order_number": header.get("resolved_order_number", header["order_number"]),
         "order_manager_email": header["order_manager_email"],
         "order_manager_name":  header["order_manager_name"],
         "procurement_manager_email": header.get("procurement_manager_email", ""),

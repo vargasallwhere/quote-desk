@@ -15,7 +15,7 @@ The existing local development entry point remains `python3 app.py` (localhost p
 - `ALLWHERE_BASE`: Allwhere service URL, either the root or ending in `/v1` or `/v2`. The existing production service URL remains the default when unset.
 - `GMAIL_TOKEN_JSON`: Gmail authorized-user token JSON.
 - `PS_USER` and `PS_PASS`: separate product-service Basic-auth credentials, required to verify current catalog MPNs. Missing credentials prevent catalog requests and produce actionable diagnostics; order-service authentication is not a substitute.
-- Optional `SCOUT_URL`: enables the desktop Scout-only features. Those buttons stay hidden when unset.
+- Optional `SCOUT_URL`: enables desktop Price Approval and Autopilot. Alternative Approval Ticket runs independently and stays visible without it.
 
 Never print credentials or put them in source control. Gmail drafts and sends are real actions; preserve the existing send confirmation and existing-thread/draft guard.
 
@@ -30,3 +30,21 @@ Additional browser-side checks: `node tests/order_status_refresh.js`, `node test
 Warranty regression checks also include `node tests/warranty_display.js` and the Python warranty tests. All Gmail writes in these checks are mocked, and the tests decode the submitted MIME body.
 
 New quotes preserve the supplied plan wording beside the device, group only matching variant/plan selections, and exclude blank or explicit no-plan selections. Standalone warranty products and the existing enterprise-note heuristic stay separate. Do not invent coverage terms, duration, or price.
+
+## Standalone alternative approvals
+
+Alternative Approval Ticket opens a same-origin wide review tab for selected distinct SKUs. Opening/reviewing is read-only: never create tickets, notify customers, or write Gmail until explicit submission. The parser is the supplied Scout parser, not a catalog verifier. US defaults to US, UK/Australia use the source UK defaults, and EU/other regions stay blank for manual confirmation. Prices in this approval form are USD; do not infer currency conversion.
+
+Server-side setup (see `ALTERNATIVE_APPROVALS.md`):
+- `AIRTABLE_PAT`: scoped personal access token with record-write access to the target base.
+- `AIRTABLE_BASE_ID` and `AIRTABLE_TABLE`: target `app...` and `tbl...` identifiers matching the supplied field mapping.
+- `AUTOMATED_APPROVALS_WEBHOOK_URL` and `AUTOMATED_APPROVALS_WEBHOOK_SECRET`: HTTPS automation destination and shared secret.
+- `AIRTABLE_USER_IDS_JSON`: JSON mapping procurement/order-manager email addresses to Airtable `usr...` collaborator IDs. Unmapped Requested By or Assigned To blocks submission, rather than silently omitting either.
+
+Secrets must be entered using the workspace Secrets tool, never in chat, source, or test fixtures containing real values. Missing setup does not prevent reviewing; it blocks all external writes with actionable messages. No live notification delivery has been verified by the mocked tests.
+
+Review sessions use an ignored, private local SQLite file, `.cache/alt-reviews.sqlite3`, for restart-safe submission locks and results; 2-hour lifetime, up to 500 sessions, expired entries cleaned on new review creation. Keep this file during ordinary process restarts. This is single-instance local operation, not a shared multi-host store. Do not delete it as a way to retry uncertain submissions. Do not share review URLs.
+
+Only explicit submission sets Send Alt/Pricing Email and invokes the supplied webhook; Quote Desk never sends a separate Gmail notification. Downstream automation owns adding the order external link; do not add a second link here. Omit webhook `multipleSKU` until its accepted contract is verified; the Airtable multiple-SKU checkbox is retained. Checkpoint successful ticket creation before notifying. A webhook failure/unknown outcome must retain the ticket link and prohibit another creation. Ambiguous Airtable writes must remain locked with a check-Airtable warning, never automatically retried.
+
+Run `node tests/alternative_picker.js` plus all existing Python/JS checks. Local Chromium walkthrough: `python3 tests/alt_browser.py` (requires the test-only `playwright` package and Chromium; the Replit path is `/repl/tools/bin/chromium`). It binds only loopback, mocks all external reads/writes, blocks browser requests outside its local fixture, and saves an ignored screenshot under `generated-artifacts/`. Never use a public preview or live writes to verify approvals.

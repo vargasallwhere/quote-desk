@@ -51,8 +51,8 @@ const mixed = [
 ];
 const mixedHtml = display(mixed);
 assert.deepEqual([...mixedHtml.matchAll(/<b>(.*?)<\/b>/g)].map(m => m[1]), [
-  "6x " + warranty().name, "3x " + warranty().name, "Other warranty",
-  warranty().name, warranty().name,
+  "9x SKU CARE-3", "6x " + warranty().name, "Other warranty",
+  warranty().name, warranty().name, "3x " + warranty().name,
 ]);
 assert.equal((mixedHtml.match(/Unit price \$55.70/g)||[]).length, 4);
 assert.match(mixedHtml, /Unit price \$60.00/);
@@ -79,5 +79,23 @@ const first = context.warrantyHtml(original);
 assert.equal(context.warrantyHtml(original), first);
 assert.equal(JSON.stringify(original), before);
 assert.equal(context.warrantyHtml({devices: original.devices, lines: []}),
-  '2 × Device… <span class="chip plain">Plan Alpha</span>');
+  '2 × Device <span class="chip plain">Plan Alpha</span>');
+const plans = [
+  {sku:"DEVICE",name:"Device & <long complete title>",plan:"Plan <Alpha>",qty:2},
+  {sku:"OTHER",name:"Device",plan:"Plan <Alpha>",qty:1},
+  {sku:"DEVICE",name:"Device & <long complete title>",plan:"Plan <Alpha>",qty:3},
+  {sku:"DEVICE",name:"Device",plan:"Plan Beta exact wording",qty:4},
+];
+const planHtml=context.warrantyHtml({devices:plans,lines:[]});
+assert.match(planHtml,/9x SKU DEVICE/);
+assert.match(planHtml,/5 × Device &amp; &lt;long complete title&gt;/);
+assert.match(planHtml,/4 × Device/);
+assert.match(planHtml,/Plan &lt;Alpha&gt;/);
+assert.match(planHtml,/Plan Beta exact wording/);
+assert.ok(planHtml.indexOf("9x SKU DEVICE") < planHtml.indexOf("1 × Device"));
+for(const sku of [""," ",null,undefined]){
+  const data={devices:[{...plans[0],sku},{...plans[0],sku}],lines:[]};
+  assert.equal((context.warrantyHtml(data).match(/Plan &lt;Alpha&gt;/g)||[]).length,2);
+}
+assert.equal(context.skuSummaries(["CARE","care"," CARE "].map(sku=>warranty({sku})),["name","price"]).length,3);
 console.log("Warranty display checks passed: consolidation, quantities, ordering, distinct identities, missing SKUs, immutability, empty/single states, escaping, and protection-plan badges.");

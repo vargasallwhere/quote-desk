@@ -154,17 +154,28 @@ function showCto(t){
 
 function warrantyHtml(w){
   if(!w)return "—";
-  const dev=w.devices.map(d=>`${d.qty} × ${esc(d.name.replace(/^\(UK\) \| |^\(US\) \| /,"").slice(0,48))}… <span class="chip ${/^add/i.test(d.plan)?"ok":"plain"}">${esc(d.plan)}</span>`).join("<br>");
-  // Display-only copies: never consolidate the order data used by other workflows.
-  const grouped=[],byProduct=new Map();
-  for(const line of w.lines){
-    const key=typeof line.sku==="string"&&line.sku.trim()?JSON.stringify([line.sku,line.name,line.price]):null;
-    const existing=key===null?null:byProduct.get(key);
-    if(existing)existing.qty+=line.qty;
-    else{const entry={...line};grouped.push(entry);if(key!==null)byProduct.set(key,entry)}
-  }
-  const lines=grouped.map(l=>`<b>${l.qty>1?esc(l.qty)+"x ":""}${esc(l.name)}</b><small>SKU ${esc(l.sku)} · Unit price $${l.price.toFixed(2)}</small>`).join("");
+  const dev=skuSummaries(w.devices,["name","plan"]).map(g=>{
+    const detail=d=>`${esc(d.qty)} × ${esc(d.name.replace(/^\(UK\) \| |^\(US\) \| /,""))} <span class="chip ${/^add/i.test(d.plan)?"ok":"plain"}">${esc(d.plan)}</span>`;
+    return g.details.length===1?detail(g.details[0]):`<b>${esc(g.qty)}x SKU ${esc(g.sku)}</b><small>${g.details.map(detail).join("<br>")}</small>`;
+  }).join("<br>");
+  // One SKU summary, with separately counted coverage/price details when they differ.
+  const lines=skuSummaries(w.lines,["name","price"]).map(g=>{
+    const detail=l=>`<b>${l.qty>1?esc(l.qty)+"x ":""}${esc(l.name)}</b><small>${g.details.length===1?"SKU "+esc(l.sku)+" · ":""}Unit price $${l.price.toFixed(2)}</small>`;
+    return g.details.length===1?detail(g.details[0]):`<b>${esc(g.qty)}x SKU ${esc(g.sku)}</b><small>${g.details.map(detail).join("<br>")}</small>`;
+  }).join("");
   return (dev||"")+(lines?`<p style="margin:6px 0 0">${lines}</p>`:"")||"—"}
+function skuSummaries(lines,fields){
+  const groups=[],bySku=new Map();
+  for(const line of lines){
+    const sku=typeof line.sku==="string"&&line.sku.trim()?line.sku:null;
+    let group=sku===null?null:bySku.get(sku);
+    if(!group){group={sku:line.sku,qty:0,details:[]};groups.push(group);if(sku!==null)bySku.set(sku,group)}
+    group.qty+=line.qty;
+    const existing=group.details.find(d=>fields.every(f=>d[f]===line[f]));
+    if(existing)existing.qty+=line.qty;else group.details.push({...line});
+  }
+  return groups;
+}
 let focusK="";
 function setFocus(k){focusK=k;const set=d=>{if(k)d.documentElement.dataset.focus=k;else delete d.documentElement.dataset.focus};
   set(document);document.querySelectorAll("iframe[data-html]").forEach(f=>{try{set(f.contentDocument)}catch(e){}});
@@ -246,7 +257,15 @@ async function openPO(po,quoteWarnings=[]){
 }
 function catalogWarningsHtml(warnings){
   if(!warnings?.length)return "";
-  return '<div class="err" role="status">'+warnings.map(w=>`<small>SKU ${esc(w.sku||"unknown")}: ${esc(w.message)}${w.mpn_source==="order_snapshot"?" Using structured order-snapshot MPN.":""}</small>`).join("")+"</div>";
+  const grouped=[],byDiagnostic=new Map();
+  for(const w of warnings){
+    const key=typeof w.sku==="string"&&w.sku.trim()?JSON.stringify([w.sku,w.status,w.message,w.mpn_source]):null;
+    let entry=key===null?null:byDiagnostic.get(key);
+    if(!entry){entry={...w,qty:0,unknown:false};grouped.push(entry);if(key!==null)byDiagnostic.set(key,entry)}
+    if(typeof w.quantity==="number"&&Number.isFinite(w.quantity)&&w.quantity>0)entry.qty+=w.quantity;
+    else entry.unknown=true;
+  }
+  return '<div class="err" role="status">'+grouped.map(w=>`<small>${w.qty&&!w.unknown?esc(w.qty)+"x ":""}SKU ${esc(w.sku||"unknown")}: ${esc(w.message)}${w.mpn_source==="order_snapshot"?" Using structured order-snapshot MPN.":""}${w.unknown?" Affected quantity unavailable.":""}</small>`).join("")+"</div>";
 }
 function itemDisplayEntries(lines){
   // SKU identity is exact; whitespace-only/missing SKUs never share an identity.
@@ -257,9 +276,11 @@ function itemDisplayEntries(lines){
     let entry=key===null?null:bySku.get(key);
     if(entry)entry.qty+=line.qty;
     else{
-      entry={...line,hasSnapshot:false,hasUnavailable:false,hasUnverified:false};
+       entry={...line,details:[],hasSnapshot:false,hasUnavailable:false,hasUnverified:false};
       entries.push(entry);if(key!==null)bySku.set(key,entry);
     }
+     const detail=entry.details.find(d=>d.name===line.name&&d.mpn===line.mpn&&d.price===line.price);
+     if(detail)detail.qty+=line.qty;else entry.details.push({...line});
     entry.hasSnapshot ||= line.mpn_source==="order_snapshot";
     entry.hasUnavailable ||= !line.mpn||line.mpn_source==="unavailable";
     entry.hasUnverified ||= line.mpn_source!=="catalog";
@@ -273,7 +294,7 @@ function itemsHtml(lines){
       ?"order snapshot; catalog not verified":"some source lines use order snapshot; catalog not verified");
     else if(i.hasUnverified)caveats.push("catalog not verified for all source lines");
     if(i.mpn&&i.hasUnavailable)caveats.push("MPN unavailable on some source lines");
-    return `${esc(i.qty)}x ${hl(i.name)}<small class="mono">${i.mpn?hl(i.mpn):"MPN unavailable"}${caveats.length?" ("+caveats.join("; ")+")":""}</small>`;
+    return `${esc(i.qty)}x ${hl(i.name)}<small class="mono">${i.mpn?hl(i.mpn):"MPN unavailable"}${caveats.length?" ("+caveats.join("; ")+")":""}</small>${i.details.length>1?`<small>SKU ${esc(i.sku)} source details:<br>${i.details.map(d=>`${esc(d.qty)}x ${hl(d.name)} · ${d.mpn?hl(d.mpn):"MPN unavailable"}${d.price!==undefined?" · Unit price $"+esc(d.price):""}`).join("<br>")}</small>`:""}`;
   }).join("<br>")||"—";
 }
 function showOrder(o,quoteWarnings=[]){
@@ -283,7 +304,7 @@ function showOrder(o,quoteWarnings=[]){
   $("#order").innerHTML=`<dl class="facts">
    <div><dt>Order status</dt><dd><span class="status" id="order-status" title="Status from Allwhere">${esc(statusText(o.status))}</span><small id="status-check" aria-live="polite">${esc(statusCheckedText(o.status_checked_at))}</small></dd></div>
    <div><dt>Customer</dt><dd>${esc(o.org_name)}<small>${esc(o.purchaser.name)}</small></dd></div>
-    <div><dt>Items</dt><dd>${items}${catalogWarningsHtml(o.catalog_warnings)}${quoteWarnings.length?"<small>Catalog diagnostics when the quote was generated:</small>"+catalogWarningsHtml(quoteWarnings):""}</dd></div>
+     <div><dt>Items</dt><dd>${items}${o.catalog_warnings?.length?"<small>Current-order catalog diagnostics:</small>"+catalogWarningsHtml(o.catalog_warnings):""}${quoteWarnings.length?"<small>Catalog diagnostics when the quote was generated:</small>"+catalogWarningsHtml(quoteWarnings):""}</dd></div>
    <div><dt>Ship to</dt><dd>${esc(r.first_name)} ${esc(r.last_name)}<small>${esc([r.address1,r.address2,r.city,r.state,r.zip,r.country].filter(Boolean).join(", "))}</small><small class="mono">${esc(r.phone)}</small></dd></div>
    <div><dt>Shipping</dt><dd>${esc(o.shipping_type)||"—"}</dd></div>
    <div><dt>Warranty</dt><dd>${warrantyHtml(o.warranty)}</dd></div>
@@ -389,10 +410,29 @@ function quoteComposer(th,d,draftId){
      .catch(e=>{$("#rstat").textContent="Not sent: "+e.message+". Check Gmail before trying again.";b.disabled=false})};
 }
 </script><script>
-function uniq(items){const seen=new Set();return items.map((it,i)=>[it,i]).filter(([it])=>{if(seen.has(it.sku))return false;seen.add(it.sku);return true})}
+function uniq(items){
+  const out=[],bySku=new Map();
+  items.forEach((it,i)=>{
+    const sku=typeof it.sku==="string"&&it.sku.trim()?it.sku:null;
+    const existing=sku===null?null:bySku.get(sku);
+    const quantity=it.quantity??1;
+    if(existing){existing[0].quantity+=quantity;existing[0].details.push({...it,quantity})}
+    else{const entry=[{...it,quantity,details:[{...it,quantity}]},i];out.push(entry);if(sku!==null)bySku.set(sku,entry)}
+  });
+  return out;
+}
 function picker(withText,btnLabel,endpoint){
    const list=uniq(tinfo.items);
-  $("#apbox").innerHTML=list.map(([it,i])=>`<label class="it"><input type="checkbox" value="${i}" checked> <span>${esc(it.product_name)} (SKU ${esc(it.sku)})</span></label>`).join("")+
+  $("#apbox").innerHTML=list.map(([it,i])=>{
+    const details=[];
+    for(const d of it.details){
+      const text=[d.product_name,d.mpn,JSON.stringify(d.specs||{}),d.price,d.protection_plan].join(" · ");
+      const found=details.find(x=>x.text===text);
+      if(found)found.quantity+=d.quantity;else details.push({...d,text});
+    }
+    const varied=details.length>1;
+    return `<label class="it"><input type="checkbox" value="${i}" checked> <span>${esc(it.quantity)}x ${esc(it.product_name)} (SKU ${esc(it.sku)})${varied?details.map(d=>`<small style="display:block">${esc(d.quantity)}x ${esc(d.product_name)}${d.mpn?" · "+esc(d.mpn):""}${Object.keys(d.specs||{}).length?" · "+esc(Object.entries(d.specs).map(([k,v])=>k+": "+v).join(", ")):""}${d.price!==undefined?" · Unit price $"+esc(d.price):""}${d.protection_plan?" · "+esc(d.protection_plan):""}</small>`).join(""):it.protection_plan?" · "+esc(it.protection_plan):""}</span></label>`;
+  }).join("")+
    (withText?'<textarea id="apText" placeholder="Paste the vendor\'s alternative from the quote (optional)"></textarea>':"")+
     catalogWarningsHtml(tinfo.catalog_warnings)+
     `<div><button class="btn primary" id="apGo">${btnLabel}</button> <span class="note" id="apStat"></span></div>`;

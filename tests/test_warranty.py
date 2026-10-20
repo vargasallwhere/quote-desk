@@ -156,7 +156,7 @@ class WarrantyTests(unittest.TestCase):
                         self.assertIn("sam.savea@cyclone.co.nz", str(message["cc"]))
                     if plan:
                         self.assertEqual(summary["devices"], [
-                            {"name": "Apple MacBook Test", "plan": plan, "qty": 1},
+                            {"name": "Apple MacBook Test", "plan": plan, "sku": "device", "qty": 1},
                         ])
                         self.assertIn("With warranty — " + plan, text)
                         self.assertEqual(text.count("With warranty"), 1)
@@ -210,7 +210,7 @@ class WarrantyTests(unittest.TestCase):
                         ], country)
                         summary = scout.fetch_full_order(PO)["warranty"]
                         self.assertEqual(summary["devices"], [
-                            {"name": "Dell Laptop Test", "plan": "Plan Gamma", "qty": 3},
+                            {"name": "Dell Laptop Test", "plan": "Plan Gamma", "sku": "second-device", "qty": 3},
                         ])
                         self.assertEqual(sum(w["qty"] for w in summary["lines"]), 6)
                         _, _, text = self.save_new_draft(country)
@@ -239,7 +239,7 @@ class WarrantyTests(unittest.TestCase):
         self.assertEqual([line["qty"] for line in summary["order_items"]],
                          [2] + [1] * 10 + [3])
         self.assertEqual(summary["warranty"]["devices"], [
-            {"name": "Apple MacBook Test", "plan": "Plan Alpha", "qty": 2},
+            {"name": "Apple MacBook Test", "plan": "Plan Alpha", "sku": "device", "qty": 2},
         ])
 
     def test_existing_thread_or_draft_blocks_every_quote_write(self):
@@ -258,6 +258,18 @@ class WarrantyTests(unittest.TestCase):
                     generate.assert_not_called()
                     service.users.return_value.drafts.assert_not_called()
                     service.users.return_value.messages.assert_not_called()
+
+    def test_warranty_device_identity_uses_exact_sku_not_name(self):
+        first = item("Plan Alpha", 2)
+        other = item("Plan Alpha", 3, "other")
+        unknown = item("Plan Alpha", 4, "unknown")
+        unknown["productVariantSnapshot"]["sku"] = None
+        self.selected = order([first, other, unknown, deepcopy(unknown), deepcopy(first)])
+        before = deepcopy(self.selected)
+        devices = scout.fetch_full_order(PO)["warranty"]["devices"]
+        self.assertEqual([(d["sku"], d["qty"]) for d in devices],
+                         [("device", 4), ("other", 3), ("", 4), ("", 4)])
+        self.assertEqual(self.selected, before)
 
 
 if __name__ == "__main__":

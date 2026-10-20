@@ -42,7 +42,7 @@ const changed = item({name: "Different name", mpn: "OTHER-MPN", price: 99, qty: 
 assert.equal(grouped([item(), changed]).length, 1);
 assert.equal(grouped([item(), changed])[0].qty, 4);
 assert.equal(grouped([item(), changed])[0].mpn, "MC123LL/A");
-assert.doesNotMatch(render([item(), changed]), /Different name|OTHER-MPN/);
+assert.match(render([item(), changed]), /3x Different name · OTHER-MPN · Unit price \$99/);
 
 for (const sku of ["", "   ", null, undefined]) {
   const lines = [item({sku}), item({sku, qty: 2})];
@@ -57,7 +57,7 @@ assert.match(render([snapshot, item()]), /SNAPSHOT \(order snapshot; catalog not
 assert.match(render([item(), unavailable]), /MPN unavailable on some source lines/);
 assert.match(render([item(), unavailable]), /catalog not verified/);
 assert.match(render([unavailable, item()]), /MPN unavailable/);
-assert.doesNotMatch(render([unavailable, item()]), /MC123LL/);
+assert.match(render([unavailable, item()]), /MC123LL/);
 // Catalog-confirmed null MPNs remain unavailable, without implying a lookup failure.
 assert.match(render([item({mpn: ""})]), /MPN unavailable/);
 assert.doesNotMatch(render([item({mpn: ""})]), /not verified/);

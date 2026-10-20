@@ -1,6 +1,6 @@
 """Order lookup and email builders ported from Scout Dev (scout_engine.py, order_confirm_engine.py).
 Logins come from environment variables (Replit Secrets), never from this file."""
-import ast, os, re, time, base64, logging, datetime
+import ast, os, re, time, base64, logging, datetime, json
 from email.mime.text import MIMEText
 import requests
 from catalog import lookup_variant
@@ -96,8 +96,23 @@ def _catalog_warnings(items):
             warnings.append({
                 **diagnostic, "sku": item.get("sku", ""),
                 "mpn_source": item.get("mpn_source", "unavailable"),
+                "quantity": item.get("quantity", item.get("qty")),
             })
     return warnings
+
+
+def _quote_identity(details, plan=""):
+    """Only equivalent exact nonblank SKUs share a new-email presentation entry.
+
+    Prices are excluded from vendor text but still distinguish materially
+    different standalone warranty offers. Unknown SKUs always remain separate.
+    """
+    sku = details.get("sku")
+    if not isinstance(sku, str) or not sku.strip():
+        return object()
+    return (sku, details.get("product_name"), details.get("allwhere_mpn"), plan,
+            json.dumps(details.get("specs") or {}, sort_keys=True),
+            details.get("price_charged") if _WARRANTY_RE.search(details.get("product_name", "")) else None)
 
 
 _WARRANTY_RE = re.compile(
@@ -400,9 +415,9 @@ def generate_uk_email(order_number: str) -> dict:
         qty   = details.get("quantity", 1)
         name = re.sub(r"^.*?\|\s*", "", name)
         mpn = details.get("allwhere_mpn", "")
-        vid = raw["productVariantId"]
+        vid = _quote_identity(details)
         plan = device_protection_plan(raw.get("protection_plan"))
-        product_key = (vid, plan)
+        product_key = _quote_identity(details, plan)
 
         if _WARRANTY_RE.search(name):
             if vid in warranty_grouped:
@@ -602,9 +617,9 @@ def generate_eu_email(order_number: str) -> dict:
         mpn = details.get("allwhere_mpn", "")
         if mpn and mpn.upper().startswith("Z"):
             has_cto_item = True
-        vid = raw["productVariantId"]
+        vid = _quote_identity(details)
         plan = device_protection_plan(raw.get("protection_plan"))
-        product_key = (vid, plan)
+        product_key = _quote_identity(details, plan)
 
         if _WARRANTY_RE.search(name):
             if vid in warranty_grouped:
@@ -781,11 +796,16 @@ def generate_us_email(order_number: str) -> dict:
         qty   = details.get("quantity", 1)
         name = re.sub(r"^.*?\|\s*", "", name)
         mpn = details.get("allwhere_mpn", "")
-        vid = raw["productVariantId"]
+        vid = _quote_identity(details, device_protection_plan(raw.get("protection_plan")))
         plan = device_protection_plan(raw.get("protection_plan"))
 
         if _WARRANTY_RE.search(name):
-            warranty_skus.append({"name": name, "qty": qty})
+            warranty_key = _quote_identity(details)
+            existing = next((w for w in warranty_skus if w["key"] == warranty_key), None)
+            if existing:
+                existing["qty"] += qty
+            else:
+                warranty_skus.append({"name": name, "qty": qty, "key": warranty_key})
         else:
             name_lower = name.lower()
             if any(kw in name_lower for kw in _APPLE_KW):
@@ -1092,6 +1112,7 @@ def get_order_info_for_ticket(order_number: str) -> dict:
             "mpn":          mpn,
             "price":        details.get("price_charged", 0),
             "quantity":     raw["quantity"],
+            "protection_plan": raw.get("protection_plan", ""),
             "asset_id":     raw.get("asset_id"),
             "catalog":      details["catalog"],
             "mpn_source":   details["mpn_source"],
@@ -1357,12 +1378,15 @@ def fetch_full_order(order_number):
         name = snap.get("title") or snap.get("productName") or ""
         plan = device_protection_plan(oi.get("protectionPlan"))
         if _WARRANTY_RE.search(name):
-            lines.append({"name": name, "sku": str(snap.get("sku", "")),
+            lines.append({"name": name, "sku": str(snap.get("sku") or ""),
                           "qty": int(oi.get("quantity") or 1),
                           "price": float(snap.get("price") or 0)})
         elif plan:
-            key = (name, plan)
-            devices[key] = devices.get(key, 0) + int(oi.get("quantity") or 1)
+            sku = str(snap.get("sku") or "")
+            key = (sku, name, plan) if sku.strip() else object()
+            if key not in devices:
+                devices[key] = {"name": name, "plan": plan, "sku": sku, "qty": 0}
+            devices[key]["qty"] += int(oi.get("quantity") or 1)
 
     return {
         "order_number": po,
@@ -1370,7 +1394,7 @@ def fetch_full_order(order_number):
         "status_checked_at": checked_at,
         "status_updated_at": (order.get("lastOrderStatusTransition") or {}).get("createdAt"),
         "warranty": {
-            "devices": [{"name": key[0], "plan": key[1], "qty": qty} for key, qty in devices.items()],
+            "devices": list(devices.values()),
             "lines": lines,
         },
         "color_swap_approved": bool(order.get("deviceColorSwapApproved")),

@@ -40,4 +40,28 @@ assert.doesNotMatch(elements["#order"].innerHTML, /catalog not verified/);
 context.showOrder(base, [{ sku: "10237", message: "Catalog was unavailable for this quote." }]);
 assert.match(elements["#order"].innerHTML, /when the quote was generated/);
 assert.match(elements["#order"].innerHTML, /unavailable for this quote/);
+const warning = (overrides={}) => ({sku:"137",status:"invalid_data",
+  message:"The catalog returned invalid product data.",mpn_source:"unavailable",
+  quantity:1,...overrides});
+const five = Array.from({length:5},()=>warning());
+assert.equal(context.catalogWarningsHtml(five),
+  '<div class="err" role="status"><small>5x SKU 137: The catalog returned invalid product data.</small></div>');
+assert.match(context.catalogWarningsHtml([warning({quantity:2}),warning({quantity:3})]), /5x SKU 137/);
+const distinct = context.catalogWarningsHtml([warning(),
+  warning({message:"Other failure <script>"}),warning({mpn_source:"order_snapshot"}),
+  warning({sku:"137 "}),warning({sku:"abc"}),warning({sku:"ABC"})]);
+assert.equal((distinct.match(/<small>/g)||[]).length,6);
+assert.match(distinct,/Other failure &lt;script&gt;/);
+assert.match(distinct,/Using structured order-snapshot MPN/);
+for(const sku of ["", " ", null, undefined])
+  assert.equal((context.catalogWarningsHtml([warning({sku}),warning({sku})]).match(/<small>/g)||[]).length,2);
+const legacy=context.catalogWarningsHtml([warning(),warning({quantity:undefined})]);
+assert.doesNotMatch(legacy,/\dx SKU/);
+assert.match(legacy,/Affected quantity unavailable/);
+const before=JSON.stringify(five);
+five.forEach(Object.freeze);Object.freeze(five);
+context.showOrder({...base,catalog_warnings:five},five);
+assert.equal(JSON.stringify(five),before);
+assert.equal((elements["#order"].innerHTML.match(/5x SKU 137/g)||[]).length,2);
+assert.match(elements["#order"].innerHTML,/Current-order catalog diagnostics/);
 console.log("Catalog display checks passed: MPNs, visible unresolved items, outage diagnostics, escaped content.");

@@ -30,7 +30,8 @@ function setup(popup = {}) {
   t.$("#rbody").value = "Unsaved vendor reply";
   t.$("#bAlt").onclick();
   assert.match(t.$("#apbox").innerHTML, /First/);
-  assert.doesNotMatch(t.$("#apbox").innerHTML, /Duplicate/);
+  assert.match(t.$("#apbox").innerHTML, /2x First/);
+  assert.match(t.$("#apbox").innerHTML, /1x Duplicate/);
   assert.match(t.$("#apbox").innerHTML, /Second/);
   await t.$("#apGo").onclick();
   assert.equal(t.calls[0].url, "/api/alt-review");
@@ -38,6 +39,27 @@ function setup(popup = {}) {
   assert.equal(popup.location, "/alt-review?session=test");
   assert.equal(t.$("#rbody").value, "Unsaved vendor reply");
   assert.equal(t.calls.length, 1);
+  const items=[
+    {sku:"137",product_name:"First <script>",quantity:2,protection_plan:"Plan <Alpha>",price:10},
+    {sku:"OTHER",product_name:"Second",quantity:4},
+    {sku:"137",product_name:"Changed",quantity:3,protection_plan:"Plan Beta",price:20},
+    ...[""," ",null,undefined,"abc","ABC"].map(sku=>({sku,product_name:"Unknown",quantity:1}))
+  ];
+  const before=JSON.stringify(items);
+  items.forEach(Object.freeze);Object.freeze(items);
+  t.context.tinfo.items=items;
+  const grouped=t.context.uniq(items);
+  assert.deepEqual(JSON.parse(JSON.stringify(grouped.map(([it,i])=>[it.quantity,i]))),
+    [[5,0],[4,1],[1,3],[1,4],[1,5],[1,6],[1,7],[1,8]]);
+  // Use production escaping for labels, while submitted indices still refer to originals.
+  t.context.esc=value=>String(value??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  t.$("#bAlt").onclick();
+  const picker=t.$("#apbox").innerHTML;
+  assert.match(picker,/5x First &lt;script&gt;/);
+  assert.match(picker,/2x First &lt;script&gt; · Unit price \$10 · Plan &lt;Alpha&gt;/);
+  assert.match(picker,/3x Changed · Unit price \$20 · Plan Beta/);
+  assert.doesNotMatch(picker,/<script>/);
+  assert.equal(JSON.stringify(items),before);
   const blocked = setup(null);
   blocked.$("#bAlt").onclick();
   await blocked.$("#apGo").onclick();

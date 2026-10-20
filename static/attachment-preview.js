@@ -1,11 +1,21 @@
 /* Read-only viewer: retain the thread/composer DOM; never save or refetch it. */
-window.AttachmentPreview = (() => {
+window.AttachmentPreview = window.AttachmentPreview?.ready ? window.AttachmentPreview : (() => {
   const $ = id => document.getElementById(id);
   let serial = 0, controller, objectURL, selected, origin, savedScroll, zoom = "fit", media;
   let pdfTask, pdfDoc, renderTask, renderSerial = 0, pageNumber = 1, pdfScale = 1;
+  let deadline, attempt = 0;
+  const release = new URL(document.currentScript.src).searchParams.get("v");
+  function watch(message, milliseconds = 30000) {
+    clearTimeout(deadline);
+    const token = serial, draw = renderSerial;
+    deadline = setTimeout(() => {
+      if (token === serial && draw === renderSerial) fail(message);
+    }, milliseconds);
+  }
   const supported = new Set(["application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp"]);
   function dispose() {
     ++serial;
+    clearTimeout(deadline);
     if (controller) controller.abort();
     controller = null;
     ++renderSerial;
@@ -32,8 +42,13 @@ window.AttachmentPreview = (() => {
   }
   async function renderPDF() {
     const token = serial, draw = ++renderSerial, doc = pdfDoc, canvas = media;
-    if (renderTask) renderTask.cancel();
+    const previous = renderTask;
+    if (previous) previous.cancel();
+    $("av-feedback").textContent = "Rendering page…";
+    watch("This PDF page took too long to render. Retry preview or download it.", 20000);
     try {
+      if (previous) await previous.promise.catch(() => {});
+      if (token !== serial || draw !== renderSerial) return;
       const page = await doc.getPage(pageNumber);
       if (token !== serial || draw !== renderSerial) return;
       const base = page.getViewport({scale: 1});
@@ -51,6 +66,7 @@ window.AttachmentPreview = (() => {
         transform: [ratio, 0, 0, ratio, 0, 0]});
       await renderTask.promise;
       if (token !== serial || draw !== renderSerial) return;
+      clearTimeout(deadline);
       $("av-feedback").textContent = "";
       $("av-page").textContent = "Page " + pageNumber + " of " + doc.numPages;
       $("av-prev").disabled = pageNumber === 1;
@@ -73,6 +89,7 @@ window.AttachmentPreview = (() => {
   function fail(message) {
     dispose();
     $("av-feedback").textContent = message;
+    $("av-feedback").classList.add("is-error");
     $("av-retry").hidden = false;
     $("av-controls").hidden = true;
     $("av-pages").hidden = true;
@@ -86,7 +103,9 @@ window.AttachmentPreview = (() => {
     $("av-controls").hidden = true;
     $("av-pages").hidden = true;
     $("av-retry").hidden = true;
+    $("av-feedback").classList.remove("is-error");
     $("av-feedback").textContent = "Loading attachment…";
+    watch("This attachment took too long to load. Retry preview or download it.");
     try {
       const response = await fetch(selected.href, {signal: controller.signal, cache: "no-store"});
       if (!response.ok) {
@@ -98,22 +117,26 @@ window.AttachmentPreview = (() => {
       if (token !== serial) return;
       const type = blob.type.split(";")[0].toLowerCase();
       if (!supported.has(type)) {
+        clearTimeout(deadline);
         $("av-feedback").textContent = "Preview is not available for this file format. Download it to open in an appropriate application.";
         return;
       }
       zoom = "fit";
       if (type === "application/pdf") {
         // Canvas-only PDF.js: no scripting, forms, annotations or attachment HTML.
-        const renderer = await import("/attachment-renderer/build/pdf.min.mjs");
+        $("av-feedback").textContent = "Starting PDF renderer…";
+        // Unique retry URLs avoid the browser's cached failed module imports.
+        const assetQuery = "?v=" + encodeURIComponent(release) + "&attempt=" + (++attempt);
+        const renderer = await import("/attachment-renderer/build/pdf.min.mjs" + assetQuery);
         const bytes = new Uint8Array(await blob.arrayBuffer());
         if (token !== serial) return;
-        renderer.GlobalWorkerOptions.workerSrc = "/attachment-renderer/build/pdf.worker.min.mjs";
+        renderer.GlobalWorkerOptions.workerSrc = "/attachment-renderer/build/pdf.worker.min.mjs" + assetQuery;
         pdfTask = renderer.getDocument({data: bytes, isEvalSupported: false,
           cMapUrl: "/attachment-renderer/cmaps/", cMapPacked: true,
           standardFontDataUrl: "/attachment-renderer/standard_fonts/",
           wasmUrl: "/attachment-renderer/wasm/", useSystemFonts: true});
         const loaded = await pdfTask.promise;
-        if (token !== serial) { loaded.destroy(); return; }
+        if (token !== serial) return;
         pdfDoc = loaded; pageNumber = 1;
         media = document.createElement("canvas");
         media.className = "av-pdf";
@@ -127,7 +150,7 @@ window.AttachmentPreview = (() => {
         media = document.createElement("img");
         media.className = "av-image";
         media.alt = selected.name;
-        media.onload = () => { if (token === serial) { $("av-feedback").textContent = ""; scale(); } };
+        media.onload = () => { if (token === serial) { clearTimeout(deadline); $("av-feedback").textContent = ""; scale(); } };
         media.onerror = () => { if (token === serial) fail("This image could not be displayed. Retry or download it."); };
         media.src = objectURL;
         $("av-feedback").textContent = "Loading image…";
@@ -146,7 +169,7 @@ window.AttachmentPreview = (() => {
       savedScroll = {x: window.scrollX, y: window.scrollY, thread: $("thread").scrollTop};
       origin = link;
     }
-    selected = {href: link.href, name: link.dataset.name};
+    selected = {href: link.dataset.href, name: link.dataset.name};
     $("av-name").textContent = selected.name;
     $("av-download").href = selected.href;
     $("av-download").download = selected.name;
@@ -169,5 +192,5 @@ window.AttachmentPreview = (() => {
     load();
   }
   window.addEventListener("resize", () => { if (selected && zoom === "fit" && pdfDoc) scale(); });
-  return {open, clear};
+  return {open, clear, ready: true};
 })();

@@ -2,6 +2,8 @@
 Reuses Scout Dev's login and order lookup; edits nothing there."""
 import base64, os, sys, time
 import re
+import hashlib
+from pathlib import Path
 from urllib.parse import quote
 from email.mime.text import MIMEText
 from email.utils import getaddresses, formataddr
@@ -69,7 +71,11 @@ def gmail_error(e):
 
 @app.get("/")
 def index():
-    return send_from_directory(os.path.dirname(__file__), "index.html")
+    # Bind the page and its viewer assets to the same release, even behind caches.
+    files = ("static/attachment-preview.js", "static/attachment-preview.css", "package-lock.json")
+    version = hashlib.sha256(b"".join((Path(app.root_path) / f).read_bytes() for f in files)).hexdigest()[:16]
+    html = (Path(app.root_path) / "index.html").read_text()
+    return Response(html.replace("__VIEWER_VERSION__", version), mimetype="text/html")
 
 @app.get("/attachment-renderer/<path:filename>")
 def attachment_renderer(filename):
@@ -80,11 +86,15 @@ def attachment_renderer(filename):
         and filename.endswith((".bcmap", ".pfb", ".ttf", ".wasm")))
     if not allowed:
         return jsonify(error="Not found"), 404
-    return send_from_directory(os.path.join(app.root_path, "node_modules", "pdfjs-dist"), filename)
+    root = Path(app.root_path) / "node_modules" / "pdfjs-dist"
+    if not (root / "build/pdf.min.mjs").is_file() or not (root / "build/pdf.worker.min.mjs").is_file():
+        return jsonify(error="PDF renderer is not installed. Ask the app owner to run the dependency setup."), 503
+    return send_from_directory(root, filename,
+                               mimetype="text/javascript" if filename.endswith(".mjs") else None)
 
 @app.after_request
 def fresh_order_responses(response):
-    if request.path == "/" or request.path.startswith(("/api/order/", "/api/order-status/", "/api/ticket-info/")):
+    if request.path in ("/", "/static/attachment-preview.js", "/static/attachment-preview.css") or request.path.startswith(("/attachment-renderer/", "/api/order/", "/api/order-status/", "/api/ticket-info/")):
         response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"
     return response

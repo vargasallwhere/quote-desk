@@ -11,6 +11,7 @@ packages = ["gitFull", "playwright-driver"]
 
 [deployment]
 deploymentTarget = "cloudrun"
+build = "npm ci --omit=dev --omit=optional --no-audit --no-fund"
 run = "python3 app.py"
 
 [[ports]]

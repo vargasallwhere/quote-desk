@@ -31,7 +31,7 @@ class AttachmentTests(unittest.TestCase):
             ("image/bmp", b"BMbinary"),
         ]:
             with self.subTest(mime=mime):
-                result = self.retrieve(data, '报价 "quote"\r\n/\\file', mime)
+                result = self.retrieve(data, '报价 ∙ "quote"\r\n/\\file', mime)
                 self.assertEqual(result.status_code, 200)
                 self.assertEqual(result.data, data)
                 self.assertEqual(result.mimetype, mime)
@@ -43,8 +43,15 @@ class AttachmentTests(unittest.TestCase):
                 self.assertEqual(result.headers["X-Content-Type-Options"], "nosniff")
                 self.assertEqual(result.headers["Cache-Control"], "no-store")
                 self.assertIn("sandbox", result.headers["Content-Security-Policy"])
+                # Werkzeug/HTTP headers must serialize as Latin-1 on the wire.
+                for key, value in result.headers:
+                    (key + ": " + value).encode("latin-1")
         self.service.users.return_value.messages.return_value.attachments.return_value.get.assert_called_with(
             userId="me", messageId="message", id="attachment")
+
+    def test_preceding_inline_header_reproduces_reported_unicode_failure(self):
+        with self.assertRaises(UnicodeEncodeError):
+            'Content-Disposition: inline; filename="quote ∙ sample.pdf"\r\n'.encode("latin-1")
 
     def test_active_and_mislabeled_content_is_download_only(self):
         for mime, data in [
@@ -76,9 +83,26 @@ class AttachmentTests(unittest.TestCase):
                 self.assertNotIn("private", result.json["error"])
 
     def test_renderer_only_exposes_required_browser_assets(self):
-        self.assertEqual(self.client.get("/attachment-renderer/build/pdf.min.mjs").status_code, 200)
+        for name in ("pdf.min.mjs", "pdf.worker.min.mjs"):
+            result = self.client.get("/attachment-renderer/build/" + name)
+            self.assertEqual(result.status_code, 200)
+            self.assertEqual(result.mimetype, "text/javascript")
+            self.assertEqual(result.headers["Cache-Control"], "no-store")
         for path in ("package.json", "../app.py", "build/pdf.sandbox.min.mjs"):
             self.assertEqual(self.client.get("/attachment-renderer/" + path).status_code, 404)
+
+    def test_missing_runtime_renderer_is_actionable(self):
+        with patch("app.Path.is_file", return_value=False):
+            result = self.client.get("/attachment-renderer/build/pdf.min.mjs")
+        self.assertEqual(result.status_code, 503)
+        self.assertIn("dependency setup", result.json["error"])
+
+    def test_page_and_viewer_assets_are_release_bound_and_not_cached(self):
+        page = self.client.get("/")
+        self.assertNotIn(b"__VIEWER_VERSION__", page.data)
+        self.assertIn(b"attachment-preview.js?v=", page.data)
+        for path in ("/", "/static/attachment-preview.js", "/static/attachment-preview.css"):
+            self.assertEqual(self.client.get(path).headers["Cache-Control"], "no-store")
 
 
 if __name__ == "__main__":

@@ -76,7 +76,7 @@ button.hl[aria-pressed="true"]{outline:2px solid var(--fg);outline-offset:1px}
 .note{color:var(--muted);font-size:12.5px}.empty{padding:24px 16px;color:var(--muted)}
 .err{padding:16px;color:#b3261e}
 select{padding:5px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--fg)}
-</style><link rel="stylesheet" href="/static/attachment-preview.css"><script src="/static/attachment-preview.js"></script></head><body>
+</style><link rel="stylesheet" href="/static/attachment-preview.css?v=__VIEWER_VERSION__"><script id="attachment-script" src="/static/attachment-preview.js?v=__VIEWER_VERSION__"></script></head><body>
 <div class="bar" id="bar"></div>
 <div class="legend"><button class="hl hl-cpu" data-k="cpu" aria-pressed="false">Chip &amp; cores</button><button class="hl hl-mem" data-k="mem" aria-pressed="false">Memory</button><button class="hl hl-ssd" data-k="ssd" aria-pressed="false">Storage</button><button class="hl hl-color" data-k="color" aria-pressed="false">Color</button><button class="hl hl-kb" data-k="kb" aria-pressed="false">Keyboard</button><button class="hl hl-size" data-k="size" aria-pressed="false">Screen size</button><button class="hl hl-mpn" data-k="mpn" aria-pressed="false">MPN</button></div>
 <div class="split">
@@ -88,6 +88,47 @@ select{padding:5px;border-radius:6px;border:1px solid var(--line);background:var
   </section></section>
 </div>
 <script>
+// If the external initializer fails, keep order/email usable and activation safe.
+// Retry loads the script again, without refreshing Gmail or replacing the composer.
+window.AttachmentPreview = window.AttachmentPreview || (() => {
+  const el = id => document.getElementById(id);
+  let link, timer, generation = 0, scroll;
+  function clear(restore = false) {
+    ++generation; clearTimeout(timer);
+    el("attachment-preview").hidden = true; el("thread").hidden = false;
+    document.body.classList.remove("attachment-view");
+    if (restore && scroll) { window.scrollTo(scroll.x, scroll.y); link?.focus({preventScroll:true}); }
+  }
+  function open(button) {
+    link = button; scroll = {x:scrollX, y:scrollY};
+    el("av-name").textContent = button.dataset.name;
+    el("av-download").href = button.dataset.href;
+    el("av-download").download = button.dataset.name;
+    el("thread").hidden = true; el("attachment-preview").hidden = false;
+    document.body.classList.add("attachment-view");
+    el("av-controls").hidden = true; el("av-stage").replaceChildren();
+    const failure = () => { el("av-feedback").textContent = "The attachment viewer could not start. Retry preview or use Download. If this continues, ask the app owner to check the viewer assets."; el("av-retry").hidden = false; };
+    failure();
+    el("av-back").onclick = () => clear(true);
+    el("av-retry").onclick = () => {
+      const token = ++generation, script = document.createElement("script");
+      el("av-feedback").textContent = "Loading attachment viewer…"; el("av-retry").hidden = true;
+      const failed = () => { if (token === generation) { ++generation; clearTimeout(timer); failure(); } };
+      script.src = el("attachment-script").src + "&retry=" + Date.now();
+      script.onerror = failed;
+      script.onload = () => {
+        if (token !== generation) return;
+        clearTimeout(timer);
+        if (window.AttachmentPreview === fallback) { failed(); return; }
+        clear(true); window.AttachmentPreview.open(button);
+      };
+      timer = setTimeout(failed, 30000); document.head.append(script);
+    };
+    el("av-back").focus({preventScroll:true});
+  }
+  const fallback = {open, clear};
+  return fallback;
+})();
 let cur=decodeURIComponent(location.hash.slice(1));try{cur=cur||localStorage.getItem("qd_last")||""}catch(e){}
 let req=0,order=null,tinfo=null,statusTimer=null,statusInFlight=null;
 
@@ -235,7 +276,7 @@ function showThreads(t){
 }
 function msgHtml(m,open){
   const draft=m.labels.includes("DRAFT"),plain=(m.text||"").replace(/\s+/g," ").slice(0,140);
-  const atts=m.attachments.map(a=>`<a class="att" data-name="${esc(a.name)}" href="/api/attachment/${encodeURIComponent(m.id)}/${encodeURIComponent(a.id)}?name=${encodeURIComponent(a.name)}&amp;type=${encodeURIComponent(a.type)}">📎 ${esc(a.name)}</a>`).join("");
+  const atts=m.attachments.map(a=>`<button type="button" class="att" data-name="${esc(a.name)}" data-href="/api/attachment/${encodeURIComponent(m.id)}/${encodeURIComponent(a.id)}?name=${encodeURIComponent(a.name)}&amp;type=${encodeURIComponent(a.type)}">📎 ${esc(a.name)}</button>`).join("");
   const body=m.html?`<iframe sandbox="allow-same-origin" data-html="${esc(m.html)}"></iframe>`:`<pre style="white-space:pre-wrap;font:inherit;margin:0">${hl(m.text)}</pre>`;
   return `<div class="msg" data-open="${open}"><div class="mh"><b>${esc(m.from.replace(/<.*>/,""))||"—"}${draft?'<span class="chip">Draft</span>':""}</b><span>${fmt(m.date)}</span></div>
    <div class="snip">${esc(plain)}</div>

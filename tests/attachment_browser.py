@@ -70,6 +70,8 @@ def fixture(port=0):
                 ("broken", "image/png", "broken.png"),
                 ("failure", "application/pdf", "unavailable.pdf"),
                 ("slow", "application/pdf", "slow.pdf"),
+                ("earlier-pdf", "application/pdf", "earlier-quote.pdf"),
+                ("unicode", "application/pdf", "quote ∙ sample.pdf"),
             ]]
         original["messages"].insert(0, earlier)
         threads.list.return_value.execute.return_value = {"threads": [{"id": "threadTest"}, {"id": "second"}]}
@@ -132,7 +134,7 @@ def walkthrough():
         page.evaluate("window.scrollTo(0, 250)")
         previous_y = page.evaluate("scrollY")
         reads = len([url for method, url in calls if "/api/threads/" in url])
-        page.locator(".att").filter(has_text="quote.pdf").click()
+        page.locator('.att[data-name="quote.pdf"]').click()
         expect(page.locator(".av-pdf")).to_be_visible()
         expect(page.locator("#av-page")).to_have_text("Page 1 of 3")
         expect(page.locator("#av-feedback")).to_have_text("")
@@ -143,6 +145,7 @@ def walkthrough():
         }"""), "PDF must actually paint readable content, not merely mount a viewer"
         expect(page.locator("#av-name")).to_have_text("quote.pdf")
         assert len(context.pages) == 1
+        assert page.url == base + "/#US"
         order = page.locator(".split > .panel").first.bounding_box()
         viewer = page.locator("#vendor-panel").bounding_box()
         stage = page.locator("#av-stage").bounding_box()
@@ -175,6 +178,16 @@ def walkthrough():
         assert restored.replace(' style=""', "") == original.replace(' style=""', "")
         assert abs(page.evaluate("scrollY") - previous_y) < 3
         assert len([url for method, url in calls if "/api/threads/" in url]) == reads
+        # Keyboard activation of a PDF in an earlier message stays in the same app.
+        page.locator(".att").filter(has_text="earlier-quote.pdf").focus()
+        page.keyboard.press("Enter")
+        expect(page.locator("#av-page")).to_have_text("Page 1 of 3")
+        assert page.url == base + "/#US" and len(context.pages) == 1
+        page.locator("#av-back").click()
+        page.locator('.att[data-name="quote ∙ sample.pdf"]').click()
+        expect(page.locator("#av-page")).to_have_text("Page 1 of 3")
+        expect(page.locator("#av-feedback")).to_have_text("")
+        page.locator("#av-back").click()
         # Earlier-message image, real image scrolling and fit/zoom.
         page.locator(".att").filter(has_text="specification.png").click()
         expect(page.locator(".av-image")).to_be_visible()
@@ -231,7 +244,7 @@ def walkthrough():
             expect(page.locator("#attachment-preview")).to_be_hidden()
             expect(page.locator("#av-stage > *")).to_have_count(0)
             # Re-open a fast attachment to set up the next iteration.
-            page.locator(".att").filter(has_text="quote.pdf").click()
+            page.locator(".att").filter(has_text="quote.pdf", has_not_text="earlier-quote.pdf").click()
             expect(page.locator(".av-pdf")).to_be_visible()
         page.locator("#av-back").click()
         page.set_viewport_size({"width": 390, "height": 844})
@@ -256,7 +269,7 @@ def walkthrough():
         page.locator("#add").fill("DRAFT")
         page.locator("#add").press("Enter")
         expect(page.locator("#rsub")).to_be_visible()
-        page.locator(".att").filter(has_text="quote.pdf").click()
+        page.locator(".att").filter(has_text="quote.pdf", has_not_text="earlier-quote.pdf").click()
         expect(page.locator("#av-page")).to_have_text("Page 1 of 3")
         page.locator("#av-back").click()
         expect(page.locator("#rsub")).to_be_visible()

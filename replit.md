@@ -48,6 +48,8 @@ Review opening and submission share the origin policy documented in `ALTERNATIVE
 
 Alternative Approval Ticket opens a same-origin wide review tab for selected distinct SKUs. Opening/reviewing is read-only: never create tickets, notify customers, or write Gmail until explicit submission. The parser is the supplied Scout parser, not a catalog verifier. US defaults to US, UK/Australia use the source UK defaults, and EU/other regions stay blank for manual confirmation. Prices in this approval form are USD; do not infer currency conversion.
 
+Opening failures must be recoverable without refreshing an unsaved vendor reply: Retry order details reads only approval metadata; failed launches retain picker text/selection; switching orders cancels a pending review. Keep script-independent review loading help so missing review assets are visible. `tests/alt_browser.py` also exercises malformed item data, real sandbox popup restrictions, request/asset/session failures and recovery. Local reproductions are not confirmation of the original reporting browser; see the evidence limits in `ALTERNATIVE_APPROVALS.md`.
+
 Server-side setup (see `ALTERNATIVE_APPROVALS.md`):
 - `AIRTABLE_PAT`: scoped personal access token with record-write access to the target base.
 - `AIRTABLE_BASE_ID` and `AIRTABLE_TABLE`: target `app...` and `tbl...` identifiers matching the supplied field mapping.

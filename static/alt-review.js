@@ -394,7 +394,7 @@
     }
     setText("rv-session-ref", sessionId.length > 16 ? `${sessionId.slice(0, 8)}…${sessionId.slice(-5)}` : sessionId);
     try {
-      const response = await fetch(`${BASE_URL}/api/alt-review/${encodeURIComponent(sessionId)}`, { headers: { Accept: "application/json" } });
+      const response = await fetch(`${BASE_URL}/api/alt-review/${encodeURIComponent(sessionId)}`, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(30000) });
       if (response.status === 404 || response.status === 410) {
         lockForm("expired", "This Quote Desk review session has expired or is no longer available. If you submitted it, check Airtable before starting another review. Otherwise reopen it from Quote Desk.");
         byId("rv-state-message").classList.add("notice-error");
@@ -407,8 +407,9 @@
       showListNotice("rv-mapping-errors", "Mapping notes:", payload.mapping_errors || payload.review.mapping_errors);
       showListNotice("rv-errors", "Configuration:", payload.configuration_errors);
       renderState(payload);
+      byId("rv-load-help").hidden = true;
     } catch (error) {
-      lockForm("error", `Quote Desk could not load this review. ${error.message || "Check your connection and return to Quote Desk to try again."}`);
+      lockForm("error", "Quote Desk could not load this review. Use Retry loading this saved review above, or return to the original Quote Desk tab and click Open again. No ticket was submitted.");
       byId("rv-state-message").classList.add("notice-error");
     }
   }

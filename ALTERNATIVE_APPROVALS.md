@@ -77,6 +77,65 @@ Only local synthetic requests/services were used: no live Airtable records, noti
 
 ## Safe verification
 
+### Inert opening diagnosis and recovery (2026-10-20)
+
+The supplied original popup selects requested items, accepts optional alternative
+text and opens the dedicated `review-v2` page with order context and editable
+specifications. Quote Desk keeps the equivalent two-click selection/optional-text
+flow and existing wide standalone review, not an embedded small form.
+
+**Reproduced local cause:** with a ticket-info response containing `items: null`,
+the old initial button called `uniq(tinfo.items)` and threw
+`Cannot read properties of null (reading 'forEach')` before adding any picker
+content. The local browser recorded that uncaught error, zero picker textareas,
+and zero external writes. Missing/null ticket info and malformed item entries
+were similarly unguarded. The original mock checks always supplied a valid item
+array, so they did not detect this path. This proves a real inert-click defect,
+**not that the reporting browser received this response**.
+
+The picker now validates availability and renders an accessible error with
+**Retry order details**. Retry requests only approval metadata, never reloads
+the order/thread or replaces the vendor composer. A loaded order keeps the
+approval entry point available even when its separate ticket-info read fails.
+Grouping still submits the first original index per distinct exact SKU.
+
+Popup creation, opener detachment, initial document access, the request, response
+validation and navigation are now inside the guarded launch. A real local
+sandboxed iframe without popup permission reproduces the restricted-context
+path; blocked windows and thrown browser restrictions show recovery instructions.
+Pending tabs paint a constant opening message rather than staying blank.
+The opening request times out after 30 seconds, errors retain selection/text, and
+the Open button is reusable. The launch captures the initiating PO and order
+generation; selecting another order aborts it and closes the waiting tab.
+Same-origin alternative review links are validated before navigation. Origin
+authority and explicit submission/duplicate locks are unchanged.
+
+The review HTML contains a script-independent loading/retry notice, so a missing
+review script is not an unexplained disabled form. Session-read errors/timeouts
+retain that notice with visible instructions; retry loads the same saved review.
+These retries do not submit a ticket.
+
+**Verified locally:** the isolated browser asserts the first click's visible
+effect, real populated review fields after the second, blank/pasted descriptions,
+source indices, regional defaults, editable fields, missing ticket configuration,
+malformed HTTP item data/recovery, popup restrictions, HTTP/non-JSON/network
+failures, missing JS/session responses and retry, order switching and unchanged
+unsaved replies. The existing direct and synthetic TLS-proxy walkthroughs and
+grouped-SKU browser checks also pass; all external writes are mocked/denied.
+Python approval/origin/submission tests and browser-side unit checks pass.
+The local populated review screenshot was saved and visually inspected at
+`generated-artifacts/alternative-review-verified.jpg` (synthetic data only).
+
+**Remaining evidence gap:** the reporting browser, address and embedded context
+were not probed; no permission was granted for that. Neither this local malformed
+item reproduction nor the earlier local origin-mismatch reproduction establishes
+the user's original cause. If further diagnosis is authorized, first request only
+browser name/version, whether Quote Desk is embedded or a separate tab, and the
+address's scheme/hostname/port (no path, PO, session token, query or credentials).
+Confirm the read-only two-click opening at that address only with explicit
+permission. No public probing, live submissions, notifications or Gmail changes
+were performed here.
+
 ```sh
 python3 -m unittest discover -s tests
 for f in tests/*.js; do node "$f" || exit 1; done

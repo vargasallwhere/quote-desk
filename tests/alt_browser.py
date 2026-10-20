@@ -245,6 +245,151 @@ def walkthrough(proxy=False):
         print(f"Local {'TLS proxy-equivalent' if proxy else 'direct'} browser checks passed: populated wide tab, source indices/text, regional flow, fields, edits, warning, no Gmail writes, success/reload, partial failure, ambiguity/recovery, missing configuration, expiry.")
 
 
+def launch_failures():
+    """Exercise real DOM, windows, sandbox restrictions, HTTP failures and recovery."""
+    from playwright.sync_api import sync_playwright, expect
+    with fixture() as (base, mode, writes, gmail), sync_playwright() as p:
+        browser = p.chromium.launch(executable_path="/repl/tools/bin/chromium", headless=True, args=["--no-sandbox"])
+        context = browser.new_context(viewport={"width": 1440, "height": 1100})
+        context.route("**/*", lambda route: route.continue_() if route.request.url.startswith(base + "/") else route.abort())
+        errors, launches = [], []
+        context.on("page", lambda tab: tab.on("pageerror", lambda error: errors.append(str(error))))
+        context.on("request", lambda req: launches.append(req.post_data_json)
+                   if req.method == "POST" and req.url == base + "/api/alt-review" else None)
+        page = context.new_page()
+        # Actual HTTP response shape reproducing the old first-click TypeError.
+        broken = {"value": True}
+        def ticket_info(route):
+            if broken["value"]:
+                route.fulfill(json={**INFO, "order_number": "US", "items": None})
+            else:
+                route.continue_()
+        page.route("**/api/ticket-info/US", ticket_info)
+        page.goto(base + "/#US")
+        expect(page.locator("#bAlt")).to_be_visible()
+        page.locator("#rbody").fill("Keep my unsaved reply")
+        page.locator("#bAlt").click()
+        expect(page.locator("#apError")).to_contain_text("Could not show")
+        expect(page.locator("#apRetry")).to_be_enabled()
+        assert not launches and not errors
+        broken["value"] = False
+        page.locator("#apRetry").click()
+        expect(page.locator("#apText")).to_be_visible()
+        expect(page.locator("#apbox input[type=checkbox]")).to_have_count(2)
+        expect(page.locator("#rbody")).to_have_value("Keep my unsaved reply")
+        page.locator("#apText").fill(TEXT)
+
+        # A realistic blocked popup and a thrown context restriction both recover in place.
+        page.evaluate("() => {window.originalOpen=window.open;window.open=()=>null}")
+        page.locator("#apGo").click()
+        expect(page.locator("#apStat")).to_contain_text("Allow popups")
+        assert not launches
+        page.evaluate("() => {window.open=()=>{throw new DOMException('restricted','SecurityError')}}")
+        page.locator("#apGo").click()
+        expect(page.locator("#apStat")).to_contain_text("browser restricted")
+        expect(page.locator("#apGo")).to_be_enabled()
+        assert not launches
+        page.evaluate("() => {window.open=window.originalOpen}")
+
+        for failure in ("http", "non-json", "network"):
+            def fail(route, failure=failure):
+                if failure == "http":
+                    route.fulfill(status=502, json={"error": "Order lookup failed. Try again shortly."})
+                elif failure == "non-json":
+                    route.fulfill(status=503, content_type="text/html", body="<h1>Unavailable</h1>")
+                else:
+                    route.abort()
+            page.route("**/api/alt-review", fail)
+            with context.expect_page() as opened:
+                page.locator("#apGo").click()
+            failed_tab = opened.value
+            expect(page.locator("#apStat")).to_contain_text("Could not open")
+            expect(page.locator("#apGo")).to_be_enabled()
+            expect(page.locator("#apText")).to_have_value(TEXT)
+            expect(page.locator("#rbody")).to_have_value("Keep my unsaved reply")
+            assert failed_tab.is_closed()
+            page.unroute("**/api/alt-review", fail)
+
+        # A missing JS asset still paints explicit help; retry reuses the saved session.
+        def missing_script(route):
+            route.abort()
+        context.route("**/alt-review-assets/alt-review.js", missing_script)
+        with context.expect_page() as opened:
+            page.locator("#apGo").click()
+        review = opened.value
+        expect(review.locator("#rv-load-help")).to_be_visible()
+        expect(review.locator("#rv-load-help")).to_contain_text("Retry loading")
+        expect(review.locator("#rv-submit-btn")).to_be_disabled()
+        context.unroute("**/alt-review-assets/alt-review.js", missing_script)
+        review.locator("#rv-load-help a").click()
+        expect(review.locator("#rv-order")).to_have_text("US")
+        expect(review.locator("#rv-model")).to_have_value("MacBook Air")
+        expect(review.locator("#rv-submit-btn")).to_be_enabled()
+        expect(review.locator("#rv-load-help")).to_be_hidden()
+
+        # Session GET failures leave actionable help in the review, never an empty tab.
+        review.route("**/api/alt-review/*", lambda route: route.fulfill(status=503, body="unavailable"))
+        review.reload()
+        expect(review.locator("#rv-state-message")).to_contain_text("Retry loading")
+        expect(review.locator("#rv-load-help")).to_be_visible()
+        review.unroute("**/api/alt-review/*")
+        review.locator("#rv-load-help a").click()
+        expect(review.locator("#rv-model")).to_have_value("MacBook Air")
+        expect(review.locator("#rv-submit-btn")).to_be_enabled()
+        review.close()
+
+        # Order switch during a delayed opening cancels and closes the pending tab.
+        held = []
+        def hold(route):
+            held.append(route)
+        page.route("**/api/alt-review", hold)
+        with context.expect_page() as opened:
+            page.locator("#apGo").click()
+        pending = opened.value
+        expect(pending.locator("body")).to_contain_text("Opening Quote Desk review")
+        # Pump browser events until the request reaches the intercepted route.
+        expect(page.locator("#apStat")).to_have_text("Opening review…")
+        page.locator("#add").fill("UK")
+        page.locator("#add").press("Enter")
+        expect(page.locator("#po")).to_have_text("UK")
+        assert pending.is_closed()
+        for route in held:
+            try:
+                route.fulfill(json={"url": "/alt-review?session=should-not-open"})
+            except Exception:
+                pass  # Aborted by the order switch.
+        page.unroute("**/api/alt-review", hold)
+        page.locator("#bAlt").click()
+        expect(page.locator("#apText")).to_have_value("")
+        with context.expect_page() as opened:
+            page.locator("#apGo").click()
+        switched = opened.value
+        expect(switched.locator("#rv-order")).to_have_text("UK")
+        expect(switched.locator("#rv-model")).to_have_value("")
+        expect(switched.locator("#rv-country")).to_have_value("UK")
+        assert launches[-1] == {"po": "UK", "items": [0, 2], "text": ""}
+        switched.close()
+
+        # True sandboxed embedding (not a stubbed popup object) blocks window.open.
+        embedded = context.new_page()
+        embedded.route("**/fixture-embed", lambda route: route.fulfill(
+            content_type="text/html",
+            body=f'<iframe sandbox="allow-scripts allow-same-origin" src="{base}/#US" width="1400" height="1000"></iframe>'))
+        embedded.goto(base + "/fixture-embed")
+        frame = embedded.frame_locator("iframe")
+        frame.locator("#bAlt").click()
+        expect(frame.locator("#apText")).to_be_visible()
+        frame.locator("#apGo").click()
+        expect(frame.locator("#apStat")).to_contain_text("embedded preview")
+        expect(frame.locator("#apGo")).to_be_enabled()
+        assert not writes
+        assert not errors, errors
+        for action in ("create", "update", "send", "delete"):
+            getattr(gmail.users.return_value.drafts.return_value, action).assert_not_called()
+        browser.close()
+        print("Local launch failures passed: malformed HTTP items, first-click recovery, blocked/restricted windows, HTTP/non-JSON/network failures, missing assets/session retry, order switch, real sandbox, no external writes.")
+
+
 if __name__ == "__main__":
     if "--serve" in sys.argv:
         with fixture(5071):
@@ -253,5 +398,6 @@ if __name__ == "__main__":
             print("Synthetic review: " + result.json["url"], flush=True)
             threading.Event().wait()
     else:
+        launch_failures()
         walkthrough()
         walkthrough(proxy=True)

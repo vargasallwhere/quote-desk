@@ -248,11 +248,12 @@ async function refreshOrderStatus(po=cur,my=req){
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshOrderStatus()});
 window.addEventListener("focus",()=>refreshOrderStatus());
 async function openPO(po,quoteWarnings=[]){
+  if(typeof cancelAlternativeLaunch==="function")cancelAlternativeLaunch();
   AttachmentPreview.clear();
   stopStatusUpdates();
   cur=po;order=null;const my=++req;bar();try{localStorage.setItem("qd_last",po)}catch(e){}$("#po").textContent=po;
   $("#usBtns").hidden=true;$("#usbox").innerHTML="";$("#ap").hidden=true;$("#cb").hidden=true;$("#cto").hidden=true;$("#apbox").innerHTML="";tinfo=null;$("#order").innerHTML='<p class="empty">Loading…</p>';$("#thread").innerHTML='<p class="empty">Loading from Gmail…</p>';$("#sync").textContent="";
-  const orderReady=fetch("/api/order/"+encodeURIComponent(po),{cache:"no-store"}).then(r=>r.json()).then(o=>{if(my===req){order=o;showOrder(o,quoteWarnings);if(!o.error)startStatusUpdates(po,my)}}).catch(e=>{if(my===req)$("#order").innerHTML='<p class="err">'+esc(e)+'</p>'});
+   const orderReady=fetch("/api/order/"+encodeURIComponent(po),{cache:"no-store"}).then(r=>r.json()).then(o=>{if(my===req){order=o;showOrder(o,quoteWarnings);if(!o.error){$("#ap").hidden=false;startStatusUpdates(po,my)}}}).catch(e=>{if(my===req)$("#order").innerHTML='<p class="err">'+esc(e)+'</p>'});
   fetch("/api/ticket-info/"+encodeURIComponent(po)).then(r=>r.json()).then(t=>{if(my===req&&!t.error){tinfo=t;$("#ap").hidden=false;showCountry(t.shipping_country);showCto(t)}}).catch(()=>{});
   fetch("/api/threads/"+encodeURIComponent(po)).then(r=>r.json()).then(async t=>{await orderReady;if(my===req)showThreads(t)}).catch(e=>{if(my===req)$("#thread").innerHTML='<p class="err">'+esc(e)+'</p>'});
 }
@@ -440,8 +441,44 @@ function uniq(items){
   });
   return out;
 }
+function cancelAlternativeLaunch(){
+  const launch=picker.launch;
+  if(!launch)return;
+  launch.cancelled=true;launch.controller?.abort();
+  try{launch.window?.close()}catch(e){}
+  picker.launch=null;
+}
+function pickerFailure(message,withText,btnLabel,endpoint){
+  $("#apbox").innerHTML='<p role="alert" id="apError"></p><button class="btn" id="apRetry">Retry order details</button>';
+  $("#apError").textContent=message+" Your vendor reply has not changed.";
+  $("#apRetry").onclick=async()=>{
+    const po=cur,generation=req,button=$("#apRetry"),error=$("#apError");
+    button.disabled=true;error.textContent="Loading approval item details…";
+    try{
+      const r=await fetch("/api/ticket-info/"+encodeURIComponent(po),{cache:"no-store",signal:AbortSignal.timeout(30000)});
+      const data=await r.json();
+      if(cur!==po||req!==generation||$("#apRetry")!==button)return;
+      if(!r.ok||data?.error)throw new Error("Approval item details are unavailable. Try again shortly.");
+      tinfo=data;picker(withText,btnLabel,endpoint);
+    }catch(e){
+      if(cur===po&&req===generation&&$("#apRetry")===button){
+        error.textContent="Could not load approval item details. Try again shortly; your vendor reply has not changed.";
+        button.disabled=false;
+      }
+    }
+  };
+}
 function picker(withText,btnLabel,endpoint){
-   const list=uniq(tinfo.items);
+  if(picker.launch)return;
+  const po=cur,generation=req,info=tinfo;
+  let list;
+  try{
+    if(!info||info.error||!Array.isArray(info.items)||!info.items.length||
+      info.items.some(it=>!it||typeof it!=="object"||Array.isArray(it)))
+      throw new Error("Approval item details are unavailable or incomplete. Retry order details below.");
+    if(!info.order_number||typeof info.order_number!=="string")
+      throw new Error("Approval order identity is unavailable. Retry order details below.");
+    list=uniq(info.items);
   $("#apbox").innerHTML=list.map(([it,i])=>{
     const details=[];
     for(const d of it.details){
@@ -452,19 +489,56 @@ function picker(withText,btnLabel,endpoint){
     const varied=details.length>1;
     return `<label class="it"><input type="checkbox" value="${i}" checked> <span>${esc(it.quantity)}x ${esc(it.product_name)} (SKU ${esc(it.sku)})${varied?details.map(d=>`<small style="display:block">${esc(d.quantity)}x ${esc(d.product_name)}${d.mpn?" · "+esc(d.mpn):""}${Object.keys(d.specs||{}).length?" · "+esc(Object.entries(d.specs).map(([k,v])=>k+": "+v).join(", ")):""}${d.price!==undefined?" · Unit price $"+esc(d.price):""}${d.protection_plan?" · "+esc(d.protection_plan):""}</small>`).join(""):it.protection_plan?" · "+esc(it.protection_plan):""}</span></label>`;
   }).join("")+
-   (withText?'<textarea id="apText" placeholder="Paste the vendor\'s alternative from the quote (optional)"></textarea>':"")+
-    catalogWarningsHtml(tinfo.catalog_warnings)+
-    `<div><button class="btn primary" id="apGo">${btnLabel}</button> <span class="note" id="apStat"></span></div>`;
+   (withText?'<label for="apText">Alternative description (optional)</label><textarea id="apText" maxlength="20000" placeholder="Paste the vendor\'s alternative from the quote (optional)"></textarea>':"")+
+    catalogWarningsHtml(info.catalog_warnings)+
+    `<div><button class="btn primary" id="apGo">${btnLabel}</button> <span class="note" id="apStat" role="status" aria-live="polite"></span></div>`;
+    $("#apText")?.focus?.();
+  }catch(e){
+    pickerFailure("Could not show requested items. Retry order details below.",withText,btnLabel,endpoint);return;
+  }
   $("#apGo").onclick=async()=>{
-    const idx=[...document.querySelectorAll("#apbox input:checked")].map(x=>+x.value);
-    if(!idx.length){$("#apStat").textContent="Select at least one item.";return}
-    const w=window.open("","_blank");
-    if(!w){$("#apStat").textContent="The review tab was blocked. Allow popups for Quote Desk, then click again.";return}
-    w.opener=null;$("#apGo").disabled=true;$("#apStat").textContent="Opening…";
-    try{const r=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({po:cur,items:idx,text:withText?$("#apText").value:""})});
-      const j=await r.json();if(!r.ok||!j.url)throw new Error(j.error||"failed");w.location=j.url;$("#apStat").textContent=""}
-    catch(e){if(w)w.close();$("#apStat").textContent="Could not open: "+e.message+(endpoint==="/api/alt-review"?"":" Is Scout Dev running?")}
-    finally{if($("#apGo"))$("#apGo").disabled=false}}}
+    if(picker.launch)return;
+    const button=$("#apGo"),status=$("#apStat");
+    if(cur!==po||req!==generation||tinfo!==info){status.textContent="The order changed. Click Alternative Approval Ticket again.";return}
+    const launch={controller:null,window:null,cancelled:false};
+    picker.launch=launch;
+    let timer;
+    try{
+      launch.controller=new AbortController();
+      const idx=[...document.querySelectorAll("#apbox input:checked")].map(x=>+x.value);
+      if(!idx.length)throw new Error("Select at least one item.");
+      const text=withText?$("#apText").value:"";
+      launch.window=window.open("","_blank");
+      const w=launch.window;
+      if(!w)throw new Error("Allow popups for Quote Desk, then click Open again. In an embedded preview, open Quote Desk in its own browser tab first.");
+      w.opener=null;
+      // Synchronous, constant-only content: never leave a request waiting in a blank tab.
+      w.document.body.textContent="Opening Quote Desk review… If this stays here, return to Quote Desk for the opening status. No ticket has been submitted.";
+      button.disabled=true;status.textContent="Opening review…";
+      timer=setTimeout(()=>launch.controller.abort(),30000);
+      const r=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json"},signal:launch.controller.signal,body:JSON.stringify({po,items:idx,text})});
+      let j;try{j=await r.json()}catch(e){throw new Error("The review service returned an unreadable response. Try Open again.")}
+      if(!r.ok||!j?.url)throw new Error(j?.error||"The review service is unavailable. Try Open again.");
+      if(launch.cancelled||cur!==po||req!==generation)throw new Error("The order changed; the pending review was cancelled.");
+      if(w.closed)throw new Error("The review tab was closed. Click Open again.");
+      if(endpoint==="/api/alt-review"){
+        const url=new URL(j.url,location.origin);
+        if(url.origin!==location.origin||url.pathname!=="/alt-review"||!url.searchParams.get("session")||url.hash)
+          throw new Error("The review service returned an invalid review link. Ask the app owner to check it.");
+      }
+      w.location=j.url;
+      status.textContent="Review tab opened. If it does not load, use its Retry loading link or return here and click Open again. No ticket has been submitted.";
+    }catch(e){
+      try{launch.window?.close()}catch(closeError){}
+      if(!launch.cancelled&&cur===po&&req===generation&&$("#apGo")===button)
+        status.textContent="Could not open review. "+(e.name==="AbortError"?"The request timed out. Click Open again.":e.name==="SecurityError"?"The browser restricted the review tab. Allow popups or open Quote Desk outside its embedded preview, then click Open again.":e.message||"Check your connection and click Open again.");
+    }finally{
+      clearTimeout(timer);
+      if(picker.launch===launch)picker.launch=null;
+      if($("#apGo")===button)button.disabled=false;
+    }
+  };
+}
 $("#bAlt").onclick=()=>picker(true,"Open alternative review","/api/alt-review");
 $("#bPr").onclick=()=>picker(false,"Open price approval review","/api/price-review");
 $("#bAr").onclick=()=>{

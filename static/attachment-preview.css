@@ -168,6 +168,48 @@ body.attachment-view .split > .panel:first-child {
   background: #fff;
 }
 
+/* PDF.js TextLayer positioning, scoped to this read-only overlay. Keep text
+   transparent: the canvas remains the visible source; only marks add color. */
+.av-sheet { position: relative; flex: 0 0 auto; background: white; }
+.av-text {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  line-height: 1;
+  text-align: initial;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  pointer-events: none;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+.av-text :is(span, br) {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  transform-origin: 0 0;
+}
+.av-text > span {
+  --font-height: 0;
+  --scale-x: 1;
+  --rotate: 0deg;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+#attachment-preview .av-text mark.hl {
+  color: transparent;
+  font: inherit;
+  padding: 0;
+  border-radius: 2px;
+  mix-blend-mode: multiply;
+  opacity: 0.6;
+}
+#av-matches { color: var(--muted, #5f6b7a); font-size: 12px; }
+
 .av-image {
   display: block;
   flex: 0 0 auto;

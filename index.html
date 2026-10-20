@@ -190,8 +190,8 @@ function wireHL(ta){
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
-const HL=[["mpn",/\b[A-Z0-9]{5,7}\/[A-Z]\b|\b[Zz][0-9A-Za-z]{8,}\b/],["cpu",/\bM\d(?:\s+(?:Pro|Max|Ultra))?\b|\b\d+[\u2011\u2010\-\u2013]\s?Core\s+(?:CPU|GPU)\b/],["ssd",/\b\d+(?:\.\d)?\s?TB\b/],["mem",/\b\d{1,4}\s?GB\b/],["color",/\b(?:Space Black|Space Gr[ae]y|Silver|Midnight|Starlight|Sky Blue)\b/],["kb",/\b(?:UK|US)\s+English(?:\s+Standard)?\b/],["size",/\b1[3-6](?:"|\u201d|-inch| inch)/]];
-const HLALL=new RegExp(HL.map(x=>"("+x[1].source+")").join("|"),"g");
+const HL=[["mpn",/\b[A-Z0-9]{5,7}\/[A-Z]\b|\b[Zz][0-9A-Za-z]{8,}\b/],["cpu",/\bM\d(?:\s+(?:Pro|Max|Ultra))?\b|\b\d+(?:[\u2011\u2010\-\u2013]\s?Core|\s*Core|C)\s+(?:CPU|GPU)\b/],["ssd",/\b\d+(?:\.\d)?\s?TB\b/],["mem",/\b\d{1,4}\s?GB\b/],["color",/\b(?:Space Black|Space Gr[ae]y|Silver|Midnight|Starlight|Sky Blue)\b/],["kb",/\b(?:UK|US)\s+English(?:\s+Standard)?\b/],["size",/\b1[3-6](?:"|\u201d|[- ](?:inch(?:es)?|in)\b)/]];
+const HLALL=new RegExp(HL.map(x=>"("+x[1].source+")").join("|"),"gi");
 function hlKind(m,i){let k=HL[i][0];if(k==="mem"&&parseInt(m)>=256)k="ssd";return k}
 function hlParts(text){const out=[];let last=0,m;HLALL.lastIndex=0;
   while((m=HLALL.exec(text))){const i=m.slice(1).findIndex(x=>x!==undefined);out.push([text.slice(last,m.index)]);out.push([m[0],hlKind(m[0],i)]);last=m.index+m[0].length}

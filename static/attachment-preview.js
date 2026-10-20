@@ -4,6 +4,78 @@ window.AttachmentPreview = window.AttachmentPreview?.ready ? window.AttachmentPr
   let serial = 0, controller, objectURL, selected, origin, savedScroll, zoom = "fit", media;
   let pdfTask, pdfWorker, nativeWorker, pdfDoc, renderTask, renderSerial = 0, pageNumber = 1, pdfScale = 1;
   let deadline, expires, attempt = 0, stage = "request";
+  let TextLayer, textTask, textSurface, textReady = false, matchCounts = {};
+  function highlightStatus() {
+    const status = $("av-matches");
+    if (!status) return;
+    status.hidden = !pdfDoc || !textReady;
+    if (status.hidden) return;
+    const key = document.documentElement.dataset.focus;
+    const count = key ? matchCounts[key] || 0 : Object.values(matchCounts).reduce((a, b) => a + b, 0);
+    const label = [...document.querySelectorAll(".legend button")].find(b => b.dataset.k === key)?.textContent;
+    status.textContent = !textSurface.textContent.trim()
+      ? "No readable text on this page. Scanned PDFs need text recognition before tags can be detected."
+      : count ? (label || "Specifications") + ": " + count + " highlighted match" + (count === 1 ? "" : "es") + " on this page."
+      : "No " + (label || "specification").toLowerCase() + " matches found on this page.";
+  }
+  // The same data-focus attribute already drives sidebar/email highlighting.
+  new MutationObserver(highlightStatus).observe(document.documentElement,
+    {attributes: true, attributeFilter: ["data-focus"]});
+  function resetText() {
+    textTask?.cancel();
+    textTask = null;
+    textReady = false;
+    matchCounts = {};
+    textSurface?.replaceChildren();
+    if ($("av-matches")) $("av-matches").hidden = true;
+  }
+  function tagText(layer, content) {
+    // Match a joined logical string, then map ranges back into positioned runs.
+    // This also detects specifications split across PDF font/text objects.
+    const items = content.items.filter(item => typeof item.str === "string");
+    let text = "", previous;
+    const runs = items.map((item, index) => {
+      if (previous) {
+        const lineBreak = previous.hasEOL ||
+          Math.abs(item.transform[5] - previous.transform[5]) > Math.max(item.height, previous.height) * 0.5;
+        const gap = item.transform[4] - previous.transform[4] - previous.width;
+        if (lineBreak) text += "\n";
+        else if (gap > Math.max(item.height, previous.height) * 0.2 &&
+          !/\s$/.test(text) && !/^\s/.test(item.str)) text += " ";
+      }
+      const start = text.length;
+      text += item.str;
+      previous = item;
+      return {start, end: text.length, div: layer.textDivs[index], value: item.str};
+    });
+    let offset = 0;
+    const matches = [];
+    for (const [value, kind] of hlParts(text)) {
+      if (kind) {
+        matches.push({start: offset, end: offset + value.length, kind});
+        matchCounts[kind] = (matchCounts[kind] || 0) + 1;
+      }
+      offset += value.length;
+    }
+    for (const run of runs) {
+      if (!run.div || !run.value) continue;
+      const nodes = [];
+      let cursor = 0;
+      for (const match of matches) {
+        if (match.end <= run.start || match.start >= run.end) continue;
+        const start = Math.max(match.start, run.start) - run.start;
+        const end = Math.min(match.end, run.end) - run.start;
+        nodes.push(document.createTextNode(run.value.slice(cursor, start)));
+        const mark = document.createElement("mark");
+        mark.className = "hl hl-" + match.kind;
+        mark.textContent = run.value.slice(start, end);
+        nodes.push(mark);
+        cursor = end;
+      }
+      nodes.push(document.createTextNode(run.value.slice(cursor)));
+      run.div.replaceChildren(...nodes);
+    }
+  }
   // Only fixed codes, numeric HTTP status and a validated release may be reported.
   // Never forward exception messages, filenames, identifiers or request URLs.
   const version = new URL(document.currentScript.src).searchParams.get("v");
@@ -30,6 +102,7 @@ window.AttachmentPreview = window.AttachmentPreview?.ready ? window.AttachmentPr
   const supported = new Set(["application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp"]);
   function dispose() {
     ++serial;
+    resetText();
     clearTimeout(deadline);
     if (controller) controller.abort();
     controller = null;
@@ -44,7 +117,7 @@ window.AttachmentPreview = window.AttachmentPreview?.ready ? window.AttachmentPr
     pdfTask = null; pdfDoc = null;
     if ($("av-stage")) $("av-stage").replaceChildren();
     if (objectURL) URL.revokeObjectURL(objectURL);
-    objectURL = null; media = null;
+    objectURL = null; media = null; textSurface = null;
   }
   function clear(restore = false) {
     dispose();
@@ -63,6 +136,7 @@ window.AttachmentPreview = window.AttachmentPreview?.ready ? window.AttachmentPr
     const token = serial, draw = ++renderSerial, doc = pdfDoc, canvas = media;
     const previous = renderTask;
     if (previous) previous.cancel();
+    resetText();
     $("av-feedback").textContent = "Rendering page…";
     let drawing = false;
     watch("page", 20000);
@@ -81,6 +155,8 @@ window.AttachmentPreview = window.AttachmentPreview?.ready ? window.AttachmentPr
       canvas.height = Math.floor(viewport.height * ratio);
       canvas.style.width = viewport.width + "px";
       canvas.style.height = viewport.height + "px";
+      canvas.parentElement.style.width = viewport.width + "px";
+      canvas.parentElement.style.height = viewport.height + "px";
       $("av-feedback").textContent = "Rendering page…";
       drawing = true;
       watch("render");
@@ -88,6 +164,24 @@ window.AttachmentPreview = window.AttachmentPreview?.ready ? window.AttachmentPr
         transform: [ratio, 0, 0, ratio, 0, 0]});
       await renderTask.promise;
       if (token !== serial || draw !== renderSerial) return;
+      // Text extraction failure must not discard a successfully painted quote.
+      try {
+        const content = await page.getTextContent();
+        if (token !== serial || draw !== renderSerial) return;
+        textSurface.style.setProperty("--total-scale-factor", viewport.scale);
+        const layer = new TextLayer({textContentSource: content, container: textSurface, viewport});
+        textTask = layer;
+        await layer.render();
+        if (token !== serial || draw !== renderSerial) return;
+        tagText(layer, content);
+        textReady = true;
+        highlightStatus();
+      } catch (_) {
+        if (token !== serial || draw !== renderSerial) return;
+        resetText();
+        $("av-matches").hidden = false;
+        $("av-matches").textContent = "This page is readable, but text detection is unavailable. Tags cannot highlight it.";
+      }
       clearTimeout(deadline);
       $("av-feedback").textContent = "";
       $("av-page").textContent = "Page " + pageNumber + " of " + doc.numPages;
@@ -164,6 +258,7 @@ window.AttachmentPreview = window.AttachmentPreview?.ready ? window.AttachmentPr
         watch("module");
         const renderer = await import("/attachment-renderer/build/pdf.min.mjs" + assetQuery);
         if (token !== serial) return;
+        TextLayer = renderer.TextLayer;
         // Own and await worker startup separately from PDF parsing. Dispose it on
         // failure/Back/Retry, including BEFORE PDF.js has accepted its worker port.
         // PDF.js otherwise retains a stalled startup Worker until its handshake.
@@ -210,7 +305,15 @@ window.AttachmentPreview = window.AttachmentPreview?.ready ? window.AttachmentPr
         media.src = objectURL;
         $("av-feedback").textContent = "Loading image…";
       }
-      $("av-stage").append(media);
+      if (pdfDoc) {
+        const sheet = document.createElement("div");
+        sheet.className = "av-sheet";
+        textSurface = document.createElement("div");
+        textSurface.className = "av-text";
+        textSurface.setAttribute("aria-hidden", "true");
+        sheet.append(media, textSurface);
+        $("av-stage").append(sheet);
+      } else $("av-stage").append(media);
       $("av-controls").hidden = false;
       scale();
     } catch (error) {
@@ -219,6 +322,13 @@ window.AttachmentPreview = window.AttachmentPreview?.ready ? window.AttachmentPr
     }
   }
   function open(link) {
+    if (!$("av-matches")) {
+      const matchStatus = document.createElement("div");
+      matchStatus.id = "av-matches";
+      matchStatus.setAttribute("role", "status");
+      matchStatus.hidden = true;
+      $("av-stage").before(matchStatus);
+    }
     if (!selected) {
       savedScroll = {x: window.scrollX, y: window.scrollY, thread: $("thread").scrollTop};
       origin = link;

@@ -165,7 +165,7 @@ def walkthrough():
             page.locator("#av-retry").click()
             expect(page.locator("#av-page")).to_have_text("Page 1 of 3")
             expect(page.locator("#av-feedback")).to_have_text("")
-            assert page.locator("canvas").evaluate("""e => {
+            assert page.locator(".av-pdf").evaluate("""e => {
               const d=e.getContext('2d').getImageData(0,0,e.width,e.height).data;
               let ink=0; for(let i=0;i<d.length;i+=4) if(d[i]<100 && d[i+3]>200) ink++;
               return ink>1000;

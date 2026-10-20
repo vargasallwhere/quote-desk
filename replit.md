@@ -64,6 +64,8 @@ Run `node tests/alternative_picker.js` plus all existing Python/JS checks. Local
 
 Attachments open inside Vendor email; Back retains the original email/composer DOM and never saves or reloads Gmail. PDF.js renders PDF pages to canvas only (no document scripts, annotations, forms, or links); raster images use temporary object URLs. HTML, SVG, Office files and other unsupported formats are download-only. Attachment responses always force download, use no-store/nosniff and validate supported MIME signatures. Keep this allowlist restrictive.
 
+PDF tag detection uses a transparent PDF.js text-positioning overlay above the original canvas, with the same specification parser and selected category as the sidebar. Highlights are view-only, update for pages/zoom/resize, and never change downloaded files or Gmail. Match counts are per logical match, including matches split across text runs. The current page explicitly reports missing matches, unavailable text detection, or no readable text (no OCR for scans). Run `python3 tests/pdf_highlights_browser.py` for mock-only checks of every tag, split runs, focus/toggle, aligned printed pixels, rotation, page changes, zoom, phone layout, and retained unsaved replies.
+
 Run `python3 tests/attachment_browser.py` for the mock-only loopback walkthrough (PDF pixels/pages, image zoom/scroll, earlier messages, Back/reply/scroll restoration, download, failures/retry, active content, late responses after PO/thread/Back changes, status independence, keyboard and phone layout). Screenshots are ignored under `generated-artifacts/`. `python3 tests/attachment_browser.py --serve` offers only the mock fixture on 127.0.0.1:5072 for local screenshots.
 
 

@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 .env
 *token*.json
+/.cache/alt-reviews.sqlite3*
+/generated-artifacts/

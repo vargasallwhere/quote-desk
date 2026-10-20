@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scout [DEV]</title>
+  <link rel="stylesheet" href="/panel/popup.css" />
+</head>
+<body>
+  <div id="devBanner" style="background:#ff6b35;color:#fff;text-align:center;padding:4px 0;font-weight:bold;font-size:11px;letter-spacing:1px;display:none;">DEV MODE — NOT FOR REAL WORK</div>
+  <script>if (window.location.port === '5002') document.getElementById('devBanner').style.display = 'block';</script>
+  <div class="header">
+    <span class="icon">🔧</span>
+    <span class="title">SCOUT DEV MODE</span>
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="stock">Which order are we working on?</button>
+  </div>
+
+  <!-- ── Shared order input (visible on all tabs) ───────────────────────────── -->
+  <div class="input-row">
+    <input
+      id="orderInput"
+      type="text"
+      placeholder="Order number (e.g. 114381-1-IRON)"
+      autocomplete="off"
+      spellcheck="false"
+    />
+    <button id="checkBtn" title="Fetch order">▶</button>
+  </div>
+
+  <!-- ── Ticket Creator Tab ─────────────────────────────────────────────────── -->
+  <div id="tab-stock" class="tab-content">
+
+    <!-- Country banner — shown after order is fetched -->
+    <div id="countryBanner" class="country-banner hidden"></div>
+
+    <!-- US action buttons — shown for US orders -->
+    <div id="orderActionsUs" class="order-actions hidden">
+      <button id="orderNoteBtnUs" class="order-note-btn">📝 Order Notes</button>
+      <button id="addressBtnUs" class="address-btn">📍 Auto-fill Address</button>
+      <button id="autoQuoteBtnUs" class="auto-quote-btn">📧 Auto-Quote Draft</button>
+      <button id="pricingBtnUs" class="pricing-btn">💰 Price Approval</button>
+      <button id="v2TicketBtnUs" class="v2-ticket-btn">Alternative Approval Ticket</button>
+      <button id="manualArBtnUs" class="manual-ar-btn">📋 Manual AR Ticket</button>
+      <button id="emailOnlyBtn" class="confirm-email-only-btn" disabled>🇺🇸 TD Synnex Confirmation Email</button>
+      <button id="autopilotBtnUs" class="autopilot-sheet-btn hidden">📋 Generate Autopilot Form</button>
+    </div>
+
+    <!-- UK action buttons — shown for UK orders -->
+    <div id="orderActionsUk" class="order-actions hidden">
+      <button id="orderNoteBtnUk" class="order-note-btn">📝 Order Notes</button>
+      <button id="addressBtnUk" class="address-btn">📍 Auto-fill Address</button>
+      <button id="autoQuoteBtnUk" class="auto-quote-btn">📧 Auto-Quote Draft</button>
+      <button id="pricingBtnUk" class="pricing-btn">💰 Price Approval</button>
+      <button id="v2TicketBtnUk" class="v2-ticket-btn">Alternative Approval Ticket</button>
+      <button id="manualArBtnUk" class="manual-ar-btn">📋 Manual AR Ticket</button>
+      <button id="altConfirmBtnUk" class="alt-confirm-btn">Confirm Alt Approval</button>
+    </div>
+
+    <!-- EU action buttons — shown for EU orders -->
+    <div id="orderActionsEu" class="order-actions hidden">
+      <button id="orderNoteBtnEu" class="order-note-btn">📝 Order Notes</button>
+      <button id="addressBtnEu" class="address-btn">📍 Auto-fill Address</button>
+      <button id="autoQuoteBtnEu" class="auto-quote-btn">📧 Auto-Quote Draft</button>
+      <button id="pricingBtnEu" class="pricing-btn">💰 Price Approval</button>
+      <button id="v2TicketBtnEu" class="v2-ticket-btn">Alternative Approval Ticket</button>
+      <button id="manualArBtnEu" class="manual-ar-btn">📋 Manual AR Ticket</button>
+      <button id="altConfirmBtnEu" class="alt-confirm-btn">Confirm Alt Approval</button>
+    </div>
+
+    <!-- ── Email accuracy rating ────────────────────────────────────────── -->
+    <div id="emailRatingPanel" class="email-rating-panel hidden">
+      <div class="email-rating-label">Was the <span id="emailRatingRegionLabel"></span> email accurate?</div>
+      <div class="email-rating-buttons">
+        <button id="emailRatingGreenBtn" class="email-rating-btn green">✅ Accurate</button>
+        <button id="emailRatingOrangeBtn" class="email-rating-btn orange">⚠️ Needs Fix</button>
+      </div>
+      <div id="emailRatingReasonRow" class="email-rating-reason-row hidden">
+        <select id="emailRatingReasonSelect" class="email-rating-reason-select">
+          <option value="">Select reason…</option>
+        </select>
+        <button id="emailRatingAddReasonBtn" class="email-rating-add-reason-btn" title="Add new reason">+</button>
+        <button id="emailRatingSubmitBtn" class="email-rating-submit-btn" disabled>Submit</button>
+      </div>
+      <div id="emailRatingNewReasonRow" class="email-rating-new-reason-row hidden">
+        <input id="emailRatingNewReasonInput" type="text" placeholder="New reason code" autocomplete="off" />
+        <button id="emailRatingNewReasonSaveBtn" class="email-rating-new-reason-save">Add</button>
+        <button id="emailRatingNewReasonCancelBtn" class="email-rating-new-reason-cancel">Cancel</button>
+      </div>
+      <div id="emailRatingConfirm" class="email-rating-confirm hidden"></div>
+    </div>
+
+    <!-- ── Inline address fill panel ─────────────────────────────────────── -->
+    <div id="addressPanel" class="address-panel hidden">
+      <div id="addressPanelSpinner" class="spinner hidden">
+        <div class="dot-pulse"></div>
+        <span>Fetching recipient…</span>
+      </div>
+      <div id="addressPanelPreview" class="bhfill-preview hidden"></div>
+      <div id="addressPanelError" class="error-box hidden"></div>
+      <div id="addressPanelBtns" class="address-panel-btns hidden">
+        <button id="ticketBhBtn" class="bhfill-btn">Fill BH Checkout →</button>
+        <button id="ticketTdBtn" class="tdfill-btn">Fill TD Synnex →</button>
+        <button id="ticketIngramBtn" class="ingramfill-btn">Fill Ingram →</button>
+        <button id="ticketBechtleBtn" class="bechtlefill-btn">Fill Bechtle →</button>
+      </div>
+      <div id="addressPanelSuccess" class="bhfill-success hidden"></div>
+    </div>
+
+    <!-- CTO alert — shown after order is fetched -->
+    <div id="ctoAlert" class="cto-alert hidden"></div>
+    <div id="enterpriseWarrantyAlert" class="cto-alert enterprise-warranty hidden"></div>
+
+    <div id="spinner" class="spinner hidden">
+      <div class="dot-pulse"></div>
+      <span>Fetching order…</span>
+    </div>
+
+    <div id="errorBox" class="error-box hidden"></div>
+    <pre id="altResultBox" class="alt-result-box hidden"></pre>
+
+    <!-- ── TD Synnex Confirmation Email result ──────────────────────────────── -->
+    <div id="confirmSpinner" class="spinner hidden">
+      <div class="dot-pulse"></div>
+      <span>Creating draft…</span>
+    </div>
+    <div id="confirmError" class="error-box hidden"></div>
+    <div id="confirmResult" class="confirm-result hidden">
+      <div id="confirmValidation" class="confirm-validation"></div>
+      <div id="confirmDraftLink" class="confirm-draft-link"></div>
+      <div class="confirm-email-preview-header">
+        <span>Email Preview</span>
+        <button id="confirmCopyBtn" class="confirm-copy-btn">Copy</button>
+      </div>
+      <pre id="confirmEmailPreview" class="confirm-email-preview"></pre>
+    </div>
+
+    <!-- ── Finance panel ──────────────────────────────────────────────────── -->
+    <div id="financePanel" class="finance-panel hidden">
+      <div class="finance-panel-header">
+        <span>💸 Send to Finance</span>
+        <button id="financeClose" class="airtable-close">✕</button>
+      </div>
+      <div class="finance-field-row">
+        <span class="finance-label">Order</span>
+        <span id="financeOrderNum" class="airtable-static"></span>
+      </div>
+      <div class="finance-field-row">
+        <span class="finance-label">Org</span>
+        <span id="financeOrg" class="airtable-dim"></span>
+      </div>
+
+      <!-- Mode tabs -->
+      <div class="finance-mode-tabs">
+        <button id="financeModeCheckout" class="finance-mode-tab active">🧾 Checkout</button>
+        <button id="financeModeHold" class="finance-mode-tab">⏸ Hold</button>
+      </div>
+
+      <!-- Checkout mode -->
+      <div id="financeCheckoutMode">
+        <div class="finance-notes-row">
+          <p class="finance-notes-label">Paste completed order notes:</p>
+          <textarea
+            id="financeNotesInput"
+            rows="10"
+            placeholder="Vendor 1: &#10;Date placed: &#10;&#10;Item 1: &#10;Price Charged: &#10;Price Paid: &#10;&#10;VendTax: &#10;VendShip: &#10;Adult Signature Fee: &#10;&#10;Order #: "
+          ></textarea>
+        </div>
+        <div class="finance-actions">
+          <button id="financeSubmitBtn" class="airtable-submit-btn">Send to Sheet →</button>
+          <span id="financeStatus" class="airtable-dim"></span>
+        </div>
+      </div>
+
+      <!-- Hold mode -->
+      <div id="financeHoldMode" class="hidden">
+        <p class="finance-notes-label">Select items on hold and provide a reason:</p>
+        <div id="financeHoldItems" class="finance-hold-items"></div>
+        <div class="finance-actions">
+          <button id="financeHoldSubmitBtn" class="airtable-submit-btn">Submit Hold →</button>
+          <span id="financeHoldStatus" class="airtable-dim"></span>
+        </div>
+      </div>
+    </div>
+    <div id="financeSuccess" class="airtable-success hidden">✓ Sent to finance sheet!</div>
+
+    <!-- ── V2 item selector (shown when V2 Ticket clicked, multi-item orders) -->
+    <div id="v2ItemSelector" class="item-selector hidden">
+      <p class="item-selector-label">Which item needs an alternative?</p>
+      <div id="v2ItemList" class="item-list"></div>
+      <div class="item-selector-actions">
+        <button id="v2ItemConfirmBtn" class="airtable-submit-btn">Continue →</button>
+      </div>
+    </div>
+
+    <!-- ── V2 alt paste box (shown after item selection) -->
+    <div id="v2AltBox" class="v2-alt-box hidden">
+      <p class="v2-alt-label">Paste the alternative device description:</p>
+      <textarea
+        id="v2AltInput"
+        placeholder="e.g. Apple MacBook Air 13&quot; M4 16GB 256GB Midnight $999&#10;or paste the full alt approval output"
+        rows="4"
+      ></textarea>
+      <button id="v2ReviewBtn" class="v2-review-btn">Open V2 Review →</button>
+      <div id="v2ParseSpinner" class="spinner hidden">
+        <div class="dot-pulse"></div>
+        <span>Parsing…</span>
+      </div>
+      <div id="v2AltError" class="error-box hidden"></div>
+    </div>
+
+    <!-- ── Pricing Approval item selector ──────────────────────────────────── -->
+    <div id="pricingItemSelector" class="item-selector hidden">
+      <p class="item-selector-label">Which item(s) need a price approval?</p>
+      <div id="pricingItemList" class="item-list"></div>
+      <div class="item-selector-actions">
+        <button id="pricingItemConfirmBtn" class="airtable-submit-btn">Open Pricing Review →</button>
+      </div>
+    </div>
+
+    <!-- ── Quote Validation panel ──────────────────────────────────────────── -->
+    <div id="quotePanel" class="quote-panel hidden">
+      <div class="quote-panel-header">
+        <span>✅ Validate Quote</span>
+        <button id="quoteClose" class="airtable-close">✕</button>
+      </div>
+
+      <div id="quoteItemSelector" class="quote-item-selector hidden">
+        <p class="quote-label">Which item to compare?</p>
+        <div id="quoteItemList" class="quote-item-list"></div>
+      </div>
+
+      <div class="quote-input-area">
+        <p class="quote-label">Paste vendor quote text:</p>
+        <textarea
+          id="quoteTextInput"
+          placeholder="Paste the vendor quote text here…"
+          rows="5"
+        ></textarea>
+
+        <p class="quote-label quote-or">— or —</p>
+
+        <div id="quoteDropZone" class="quote-drop-zone">
+          <span class="quote-drop-text">Drop PDF here or click to upload</span>
+          <input type="file" id="quoteFileInput" accept=".pdf" class="hidden" />
+        </div>
+        <div id="quoteFileName" class="quote-file-name hidden"></div>
+      </div>
+
+      <div class="quote-actions">
+        <button id="quoteSubmitBtn" class="airtable-submit-btn">Validate →</button>
+        <span id="quoteStatus" class="airtable-dim"></span>
+      </div>
+      <div id="quoteSpinner" class="spinner hidden">
+        <div class="dot-pulse"></div>
+        <span>Extracting specs…</span>
+      </div>
+      <div id="quoteError" class="error-box hidden"></div>
+      <div id="quoteResults" class="quote-results hidden"></div>
+    </div>
+
+  </div>
+
+  <script src="/panel/popup.js"></script>
+</body>
+</html>

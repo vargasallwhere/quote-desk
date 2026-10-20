@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Alternate Approval — allwhere</title>
+  <link rel="stylesheet" href="/panel/review_v2.css" />
+</head>
+<body>
+
+  <!-- Top nav -->
+  <div class="rv-top-banner">
+    <span class="rv-wordmark">allwhere</span>
+  </div>
+
+  <!-- Card header -->
+  <div class="rv-card-header">
+    <span class="rv-card-header-icon">😊</span>
+    <div class="rv-card-header-title">Alternate Approval Request</div>
+    <div class="rv-card-header-subtitle">Review all fields before submitting. Submitting will send the customer notification email.</div>
+  </div>
+
+  <div class="rv-body">
+
+    <!-- Section: Order Info (read-only) -->
+    <div class="rv-section">
+      <div class="rv-section-title">Order Info</div>
+      <div class="rv-row-3">
+        <div class="rv-field">
+          <label>Order #</label>
+          <span id="rv-order" class="rv-static"></span>
+        </div>
+        <div class="rv-field">
+          <label>Org</label>
+          <span id="rv-org" class="rv-static rv-dim"></span>
+        </div>
+        <div class="rv-field">
+          <label>Assigned To (OM)</label>
+          <span id="rv-om" class="rv-static rv-dim"></span>
+        </div>
+      </div>
+      <div class="rv-row-2" style="border-top: 1px solid #ece8e2;">
+        <div class="rv-field">
+          <label>Requested By (Procurement) <span class="rv-req">*</span></label>
+          <select id="rv-requested-by" class="rv-input">
+            <option value="sara@allwhere.co">Sara Vargas</option>
+            <option value="keajah@allwhere.co">Keajah</option>
+            <option value="giancarlo@allwhere.co">Giancarlo Sanchez</option>
+            <option value="olivia@allwhere.co">Olivia</option>
+            <option value="emma@allwhere.co">Emma Vasey</option>
+          </select>
+        </div>
+        <div class="rv-field"></div>
+      </div>
+    </div>
+
+    <!-- Section: Action Request -->
+    <div class="rv-section">
+      <div class="rv-section-title">Action Request</div>
+      <div class="rv-row-3">
+        <div class="rv-field">
+          <label>Request Type</label>
+          <span class="rv-static">Alternate Approval</span>
+        </div>
+        <div class="rv-field">
+          <label>Alternate Type <span class="rv-req">*</span></label>
+          <select id="rv-alt-type" class="rv-input">
+            <option>Out of stock / backordered</option>
+            <option>CTO device</option>
+            <option>EOL device</option>
+            <option>Build / model does not exist</option>
+            <option>Shipping speed unavailable</option>
+            <option>Unavailable in region</option>
+          </select>
+        </div>
+        <div class="rv-field">
+          <label>Alt Sub-type</label>
+          <select id="rv-alt-subtype" class="rv-input">
+            <option>Model unavailable</option>
+            <option>Color unavailable</option>
+            <option>Keyboard language unavailable</option>
+            <option>Storage (SSD) unavailable</option>
+            <option>Processor unavailable</option>
+            <option>Display unavailable</option>
+            <option>Memory (RAM) unavailable</option>
+            <option>Other</option>
+          </select>
+        </div>
+      </div>
+      <div id="rv-lead-time-row" class="rv-lead-time-row hidden">
+        <div class="rv-field">
+          <label>Lead Time</label>
+          <input id="rv-lead-time" type="text" class="rv-input" placeholder="e.g. 3-5 weeks" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Section: Requested Item -->
+    <div class="rv-section">
+      <div class="rv-section-title">Requested Item</div>
+      <div class="rv-row-2">
+        <div class="rv-field">
+          <label>Requested SKU <span class="rv-req">*</span></label>
+          <input id="rv-req-sku" type="text" class="rv-input" placeholder="Allwhere SKU" />
+        </div>
+        <div class="rv-field rv-field-checkbox">
+          <label>Multiple SKUs?</label>
+          <input id="rv-multi-skus" type="checkbox" class="rv-checkbox" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Section: Alternative Device -->
+    <div class="rv-section">
+      <div class="rv-section-title">Alternative Device</div>
+      <div class="rv-grid">
+
+        <div class="rv-field">
+          <label>Device Type <span class="rv-req">*</span></label>
+          <select id="rv-device-type" class="rv-input">
+            <option>Laptop</option>
+            <option>Tablet</option>
+            <option>Mobile Phone</option>
+            <option>Other</option>
+          </select>
+        </div>
+
+        <div class="rv-field">
+          <label>Make <span class="rv-req">*</span></label>
+          <input id="rv-make" type="text" class="rv-input" placeholder="e.g. Apple" />
+        </div>
+
+        <div class="rv-field">
+          <label>Model <span class="rv-req">*</span></label>
+          <input id="rv-model" type="text" class="rv-input" placeholder="e.g. MacBook Air" />
+        </div>
+
+        <div class="rv-field">
+          <label>Display Size <span class="rv-req">*</span></label>
+          <input id="rv-display" type="text" class="rv-input" placeholder='e.g. 13"' />
+        </div>
+
+        <div class="rv-field">
+          <label>Processor <span class="rv-req">*</span></label>
+          <input id="rv-processor" type="text" class="rv-input" placeholder="e.g. M4 Pro" />
+        </div>
+
+        <div class="rv-field">
+          <label>Memory <span class="rv-req">*</span></label>
+          <input id="rv-memory" type="text" class="rv-input" placeholder="e.g. 16 GB" />
+        </div>
+
+        <div class="rv-field">
+          <label>Storage <span class="rv-req">*</span></label>
+          <input id="rv-storage" type="text" class="rv-input" placeholder="e.g. 256 GB" />
+        </div>
+
+        <div class="rv-field">
+          <label>Color <span class="rv-req">*</span></label>
+          <input id="rv-color" type="text" class="rv-input" placeholder="e.g. Midnight" />
+        </div>
+
+        <div class="rv-field">
+          <label>Keyboard Language <span class="rv-req">*</span></label>
+          <input id="rv-keyboard" type="text" class="rv-input" />
+        </div>
+
+        <div class="rv-field">
+          <label>SKU Country / Region <span class="rv-req">*</span></label>
+          <input id="rv-country" type="text" class="rv-input" />
+        </div>
+
+        <div class="rv-field">
+          <label>MPN (if applicable)</label>
+          <input id="rv-mpn" type="text" class="rv-input" placeholder="e.g. MXW73LL/A" />
+        </div>
+
+        <div class="rv-field">
+          <label>Price (USD) <span class="rv-req">*</span></label>
+          <input id="rv-price" type="text" class="rv-input" placeholder="e.g. 1299.00" />
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <div class="rv-footer">
+    <button id="rv-submit-btn" class="rv-submit-btn">Submit</button>
+    <span id="rv-submit-status" class="rv-status"></span>
+  </div>
+
+  <div id="rv-success" class="rv-success hidden">
+    ✓ Ticket created —
+    <a id="rv-airtable-link" href="#" target="_blank">open in Airtable</a>
+  </div>
+
+  <script src="/panel/review_v2.js"></script>
+</body>
+</html>

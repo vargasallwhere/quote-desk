@@ -4,3 +4,4 @@ __pycache__/
 *token*.json
 /.cache/alt-reviews.sqlite3*
 /generated-artifacts/
+/node_modules/

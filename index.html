@@ -77,11 +77,11 @@ button.hl[aria-pressed="true"]{outline:2px solid var(--fg);outline-offset:1px}
 .note{color:var(--muted);font-size:12.5px}.empty{padding:24px 16px;color:var(--muted)}
 .err{padding:16px;color:#b3261e}
 select{padding:5px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--fg)}
-</style><link rel="stylesheet" href="/static/attachment-preview.css?v=__VIEWER_VERSION__"><script id="attachment-script" src="/static/attachment-preview.js?v=__VIEWER_VERSION__"></script></head><body>
+</style><link rel="stylesheet" href="/static/depot-review.css"><link rel="stylesheet" href="/static/attachment-preview.css?v=__VIEWER_VERSION__"><script id="attachment-script" src="/static/attachment-preview.js?v=__VIEWER_VERSION__"></script><script src="/static/depot-review.js"></script></head><body>
 <div class="bar" id="bar"></div>
 <div class="legend"><button class="hl hl-cpu" data-k="cpu" aria-pressed="false">Chip &amp; cores</button><button class="hl hl-mem" data-k="mem" aria-pressed="false">Memory</button><button class="hl hl-ssd" data-k="ssd" aria-pressed="false">Storage</button><button class="hl hl-color" data-k="color" aria-pressed="false">Color</button><button class="hl hl-kb" data-k="kb" aria-pressed="false">Keyboard</button><button class="hl hl-size" data-k="size" aria-pressed="false">Screen size</button><button class="hl hl-mpn" data-k="mpn" aria-pressed="false">MPN</button></div>
-<div class="split">
-  <section class="panel"><div class="ph"><h2>Order details</h2><strong class="big mono" id="po"></strong></div><div id="cb" hidden></div><div id="cto" hidden></div><div id="order"><p class="empty">Loading…</p></div><div class="ap" id="ap" hidden><div class="ph" style="padding:0 0 6px;border:0"><h2>Approvals</h2></div><div class="btns"><button class="btn" id="bAlt">Alternative Approval Ticket</button><button class="btn" id="bAr">Manual AR Ticket</button><button class="btn" id="bPr">Price Approval</button></div><div class="btns" id="usBtns" hidden><button class="btn" id="bTd">🇺🇸 TD Synnex Confirmation Email</button><button class="btn" id="bAp">📋 Generate Autopilot Form</button></div><div id="usbox" class="note"></div><div id="apbox"></div></div></section>
+<div class="split" id="main-split">
+  <section class="panel"><div class="ph"><h2>Order details</h2><strong class="big mono" id="po"></strong></div><div id="cb" hidden></div><div id="cto" hidden></div><div id="depot-order-banner" hidden></div><div id="order"><p class="empty">Loading…</p></div><div class="ap" id="ap" hidden><div class="ph" style="padding:0 0 6px;border:0"><h2>Approvals</h2></div><div class="btns"><button class="btn" id="bAlt">Alternative Approval Ticket</button><button class="btn" id="bAr">Manual AR Ticket</button><button class="btn" id="bPr">Price Approval</button></div><div class="btns" id="usBtns" hidden><button class="btn" id="bTd">🇺🇸 TD Synnex Confirmation Email</button><button class="btn" id="bAp">Generate Autopilot Form</button></div><div id="usbox" class="note"></div><div id="apbox"></div></div></section>
   <section class="panel" id="vendor-panel"><div class="ph"><h2>Vendor email</h2><span class="sync" id="sync"></span></div><div id="thread"></div><section id="attachment-preview" aria-label="Attachment preview" hidden>
     <div class="av-toolbar"><button class="btn" id="av-back">Back to email</button><strong id="av-name"></strong><a class="btn" id="av-download">Download</a></div>
     <div class="av-controls" id="av-controls" hidden><span id="av-pages" hidden><button class="btn" id="av-prev" aria-label="Previous page">Previous</button> <output id="av-page" aria-live="polite"></output> <button class="btn" id="av-next" aria-label="Next page">Next</button></span><button class="btn" id="av-fit">Fit width</button><button class="btn" id="av-actual">Actual size</button><button class="btn" id="av-out" aria-label="Zoom out">−</button><output id="av-zoom" aria-live="polite"></output><button class="btn" id="av-in" aria-label="Zoom in">+</button></div>
@@ -248,6 +248,7 @@ async function refreshOrderStatus(po=cur,my=req){
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshOrderStatus()});
 window.addEventListener("focus",()=>refreshOrderStatus());
 async function openPO(po,quoteWarnings=[]){
+  globalThis.DepotReview?.orderChanging?.(po);
   if(typeof cancelAlternativeLaunch==="function")cancelAlternativeLaunch();
   AttachmentPreview.clear();
   stopStatusUpdates();
@@ -255,7 +256,7 @@ async function openPO(po,quoteWarnings=[]){
   $("#usBtns").hidden=true;$("#usbox").innerHTML="";$("#ap").hidden=true;$("#cb").hidden=true;$("#cto").hidden=true;$("#apbox").innerHTML="";tinfo=null;$("#order").innerHTML='<p class="empty">Loading…</p>';$("#thread").innerHTML='<p class="empty">Loading from Gmail…</p>';$("#sync").textContent="";
    const orderReady=fetch("/api/order/"+encodeURIComponent(po),{cache:"no-store"}).then(r=>r.json()).then(o=>{if(my===req){order=o;showOrder(o,quoteWarnings);if(!o.error){$("#ap").hidden=false;startStatusUpdates(po,my)}}}).catch(e=>{if(my===req)$("#order").innerHTML='<p class="err">'+esc(e)+'</p>'});
   fetch("/api/ticket-info/"+encodeURIComponent(po)).then(r=>r.json()).then(t=>{if(my===req&&!t.error){tinfo=t;$("#ap").hidden=false;showCountry(t.shipping_country);showCto(t)}}).catch(()=>{});
-  fetch("/api/threads/"+encodeURIComponent(po)).then(r=>r.json()).then(async t=>{await orderReady;if(my===req)showThreads(t)}).catch(e=>{if(my===req)$("#thread").innerHTML='<p class="err">'+esc(e)+'</p>'});
+  fetch("/api/threads/"+encodeURIComponent(po)).then(r=>r.json()).then(async t=>{await orderReady;if(my===req&&!globalThis.DepotReview?.restoreVendorView?.(po))showThreads(t)}).catch(e=>{if(my===req&&!globalThis.DepotReview?.restoreVendorView?.(po))$("#thread").innerHTML='<p class="err">'+esc(e)+'</p>'});
 }
 function catalogWarningsHtml(warnings){
   if(!warnings?.length)return "";
@@ -301,6 +302,7 @@ function itemsHtml(lines){
 }
 function showOrder(o,quoteWarnings=[]){
   if(o.error){$("#order").innerHTML='<p class="err">'+esc(o.error)+'</p>';return}
+  globalThis.DepotReview?.showOrder?.(o);
   $("#po").textContent=o.order_number||cur;
   const r=o.recipient,items=itemsHtml(o.order_items);
   $("#order").innerHTML=`<dl class="facts">

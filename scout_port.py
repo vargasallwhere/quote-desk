@@ -4,6 +4,7 @@ import ast, os, re, time, base64, logging, datetime, json
 from email.mime.text import MIMEText
 import requests
 from catalog import lookup_variant
+from depot_notification import eligibility as depot_eligibility
 
 _allwhere_auth_secret = os.environ.get("ALLWHERE_AUTH", "").strip()
 if _allwhere_auth_secret:
@@ -1390,6 +1391,7 @@ def fetch_full_order(order_number):
 
     return {
         "order_number": po,
+        "depot_notification": depot_eligibility(order),
         "status": order["status"],
         "status_checked_at": checked_at,
         "status_updated_at": (order.get("lastOrderStatusTransition") or {}).get("createdAt"),

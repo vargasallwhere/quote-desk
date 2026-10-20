@@ -131,7 +131,9 @@ def walkthrough():
             reads = len([url for _, url in calls if "/api/threads/" in url])
             page.locator('#reply .att[data-name="draft-spec.pdf"]').click()
             expect(page.locator("#av-page")).to_have_text("Page 1 of 3")
-            assert page.locator("canvas").evaluate("""e=>{
+            page.wait_for_function("""()=>{
+                const e=document.querySelector('canvas.av-pdf');
+                if(!e || !e.width || !e.height)return false;
                 const d=e.getContext('2d').getImageData(0,0,e.width,e.height).data;
                 return d.some((v,i)=>i%4!==3&&v<100);
             }""")

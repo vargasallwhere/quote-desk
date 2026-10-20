@@ -145,6 +145,8 @@ def threads(po):
     out = []
     for t in found.get("threads", []):
         full = svc.users().threads().get(userId="me", id=t["id"], format="full").execute()
+        if is_depot_thread(full):
+            continue
         msgs = [_message(m) for m in full["messages"]]  # Gmail's own order
         if all({"TRASH", "SPAM"} & set(m["labels"]) for m in msgs):
             continue
@@ -241,8 +243,17 @@ def send_draft():
 def quote_draft():
     """Scout Dev's Auto-Quote Draft, unchanged. Refuses if this PO already has any Gmail thread or draft."""
     po = request.get_json()["po"].strip()
-    if gmail().users().threads().list(userId="me", q=f'subject:"{po}" in:anywhere -in:trash', maxResults=1).execute().get("threads"):
-        return jsonify({"error": "This PO already has a Gmail thread or draft. Refresh to see it."}), 409
+    token = None
+    while True:
+        page = gmail().users().threads().list(userId="me", q=f'subject:"{po}" in:anywhere -in:trash',
+                                            maxResults=100, pageToken=token).execute()
+        for thread in page.get("threads", []):
+            full = gmail().users().threads().get(userId="me", id=thread["id"], format="full").execute()
+            if not is_depot_thread(full):
+                return jsonify({"error": "This PO already has a Gmail thread or draft. Refresh to see it."}), 409
+        token = page.get("nextPageToken")
+        if not token:
+            break
     r = generate_auto_quote_email(po)
     return jsonify(r), (404 if "error" in r else 200)
 
@@ -347,6 +358,10 @@ def attachment(msg, att):
         "Content-Security-Policy": "default-src 'none'; sandbox",
         "Cache-Control": "no-store",
     })
+
+
+from depot_routes import register as register_depot
+is_depot_thread = register_depot(app, lambda: gmail(), _mime, _draft_attachments)
 
 
 if __name__ == "__main__":

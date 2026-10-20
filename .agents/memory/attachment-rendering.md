@@ -9,6 +9,12 @@ Verify that a PDF actually paints readable content; a mounted frame or successfu
 
 **How to apply:** Keep a known-text, multipage PDF fixture and check painted pixels plus an actual screenshot, not just the presence of the viewer element.
 
+PDF page labels can update before rendering finishes, and browser/font tooling may insert additional scratch canvases.
+
+**Why:** Local Chromium exposed both a blank-yet-mounted document canvas and a second non-document canvas during regression verification.
+
+**How to apply:** Target the actual document canvas and wait for readable painted pixels rather than assuming a page label or a single global canvas proves rendering.
+
 Do not treat a passing current-source preview as proof that a published attachment problem is fixed.
 
 **Why:** The user's separate-tab screenshot matched the preceding link behavior, while current source painted the same mocked flow successfully. Those observations alone cannot identify which release an external browser served.

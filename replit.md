@@ -2,6 +2,16 @@
 
 Small Flask application with its existing HTML frontend. Keep this structure and stack.
 
+## Australia depot arrival emails
+
+Only an explicit boolean `orderType.toDepot` plus the whitespace/case-normalized exact depot name `allwhere storage Australia` enables this action. Australian addresses/country alone never qualify; contradictory explicit final destinations block it. Preview is read-only and catalog/snapshot uncertainties stay outside the outgoing email. The supplied fixed recipients, full resolved PO subject and physical-item template are separate from vendor requests/replies.
+
+The wide in-page review retains vendor DOM and per-order edits in memory. Opening, closing and status checks do not save or send. Explicit Save reuses the app's own standalone depot draft; Send requires confirmation bound to the edited subject/body, fixed recipients, order and current journal revision. Existing depot attachments are retained. Depot threads are excluded from vendor thread selection and do not block creating the vendor quote request.
+
+Lifecycle identity, revisions and write locks live in the ignored private `.cache/depot-notifications.sqlite3` journal. Keep it across ordinary restarts; do not delete or edit it to retry an uncertain action. This is single-instance local storage, not multi-host coordination. Interrupted/ambiguous saves or sends remain locked with a check-Gmail warning; no automatic retry or resend. Successful sends remain visibly sent. If Gmail was changed externally, the app blocks unsafe draft replacement; reconcile in Gmail rather than creating a new notification.
+
+Run `python3 -m unittest discover -s tests` and `python3 tests/depot_browser.py`. The latter exercises real Flask handlers and synthetic in-memory Gmail MIME on loopback only, blocks external requests, and checks desktop/phone, keyboard, duplicate clicks, exact send confirmation, draft reuse, failure/uncertainty, delayed preview/order switching and unsaved vendor replies. Screenshots are ignored under `generated-artifacts/depot-review-*.jpg`; `--serve` offers a mock-only loopback fixture on 5078. No live emails, customer reads, existing draft modifications, public preview or publication are part of verification.
+
 ## Running on Replit
 
 Dependencies are listed in `requirements.txt`.

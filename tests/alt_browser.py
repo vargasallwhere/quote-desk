@@ -20,11 +20,12 @@ from werkzeug.serving import make_server
 
 
 @contextmanager
-def fixture(port=0):
+def fixture(port=0, proxy=False):
     with ExitStack() as stack:
         temp = stack.enter_context(tempfile.TemporaryDirectory())
         stack.enter_context(patch.dict(os.environ, CONFIG, clear=True))
-        stack.enter_context(patch.dict(app.app.config, {"ALT_REVIEW_DB": temp + "/browser.sqlite3"}))
+        stack.enter_context(patch.dict(app.app.config, {
+            "ALT_REVIEW_DB": temp + "/browser.sqlite3", "ALT_REVIEW_EXTERNAL_ORIGIN": None}))
         stack.enter_context(patch.object(app, "SCOUT", ""))
         def info(po):
             countries = {"US": "United States", "UK": "United Kingdom", "EU": "Ireland", "AU": "Australia"}
@@ -68,24 +69,44 @@ def fixture(port=0):
                 return response({}, mode["notification"])
             raise AssertionError("Unexpected external write")
         stack.enter_context(patch.object(requests, "post", side_effect=post))
-        server = make_server("127.0.0.1", port, app.app, threaded=True)
+        def proxy_app(environ, start_response):
+            # Local TLS termination + internal HTTP/rewritten Host. No public requests.
+            # Deliberately preserve a client-supplied prefix in forwarding chains.
+            public_host = environ["HTTP_HOST"]
+            environ["HTTP_HOST"] = "internal.test:5000"
+            environ["wsgi.url_scheme"] = "http"
+            environ["HTTP_X_FORWARDED_HOST"] = "attacker.test, " + public_host
+            environ["HTTP_X_FORWARDED_PROTO"] = "http, https"
+            if environ.get("HTTP_ORIGIN"):
+                mode["proxy_facts"] = {
+                    "origin": environ["HTTP_ORIGIN"], "scheme": environ["wsgi.url_scheme"],
+                    "host": environ["HTTP_HOST"]}
+            return app.app(environ, start_response)
+        server = make_server("127.0.0.1", port, proxy_app if proxy else app.app,
+                             threaded=True, ssl_context="adhoc" if proxy else None)
+        base = f"{'https' if proxy else 'http'}://127.0.0.1:{server.server_port}"
+        if proxy:
+            app.app.config["ALT_REVIEW_EXTERNAL_ORIGIN"] = base
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
-            yield f"http://127.0.0.1:{server.server_port}", mode, writes, service
+            yield base, mode, writes, service
         finally:
             server.shutdown()
             thread.join(5)
 
 
-def walkthrough():
+def walkthrough(proxy=False):
     from playwright.sync_api import sync_playwright, expect
-    with fixture() as (base, mode, writes, gmail), sync_playwright() as p:
+    with fixture(proxy=proxy) as (base, mode, writes, gmail), sync_playwright() as p:
         browser = p.chromium.launch(executable_path="/repl/tools/bin/chromium", headless=True, args=["--no-sandbox"])
-        context = browser.new_context(viewport={"width": 1440, "height": 1100})
+        context = browser.new_context(viewport={"width": 1440, "height": 1100}, ignore_https_errors=True)
         # Block every browser request outside the local fixture, including ticket links.
         context.route("**/*", lambda route: route.continue_() if route.request.url.startswith(base + "/") else route.abort())
         page = context.new_page()
+        launches = []
+        page.on("request", lambda req: launches.append(req.post_data_json)
+                if req.method == "POST" and req.url == base + "/api/alt-review" else None)
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.goto(base)
@@ -105,9 +126,17 @@ def walkthrough():
         expect(review.locator("#rv-submit-btn")).to_be_enabled()
         expect(review.locator("#rv-multi-skus")).to_be_checked()
         expect(review.locator("#rv-order")).to_have_text("US")
+        expect(review.locator("#rv-req-sku")).to_have_value("101")
+        expect(review.locator("#rv-model")).to_have_value("MacBook Air")
+        expect(review.locator("#rv-memory")).to_have_value("24 GB")
+        assert launches[-1] == {"po": "US", "items": [0, 2], "text": TEXT}
+        assert review.locator(".page-shell").bounding_box()["width"] >= 1100
         expect(review.locator("#rv-notification-warning")).to_contain_text("customer notification")
         expect(page.locator("#rbody")).to_have_value("My unsaved vendor reply")
         assert not writes
+        if proxy:
+            assert mode["proxy_facts"] == {
+                "origin": base, "scheme": "http", "host": "internal.test:5000"}
         review.locator("#rv-model").fill("")
         review.locator("#rv-submit-btn").click()
         expect(review.locator("#rv-submit-status")).to_contain_text("required")
@@ -116,7 +145,7 @@ def walkthrough():
         review.locator("#rv-requested-by").select_option("emma@allwhere.co")
         review.locator("#rv-price").fill("0")
         Path("generated-artifacts").mkdir(exist_ok=True)
-        review.screenshot(path="generated-artifacts/alternative-review.jpg", full_page=True)
+        review.screenshot(path="generated-artifacts/alternative-review" + ("-proxy" if proxy else "") + ".jpg", full_page=True)
         review.locator("#rv-submit-btn").click()
         expect(review.locator("#rv-airtable-link")).to_be_visible()
         expect(review.locator("#rv-result-message")).to_contain_text("accepted")
@@ -136,15 +165,19 @@ def walkthrough():
             expect(page.locator("#po")).to_have_text(country)
             expect(page.locator("#bAlt")).to_be_visible()
             page.locator("#bAlt").click()
+            page.locator('#apbox input[value="0"]').uncheck()
             with context.expect_page() as opened:
                 page.locator("#apGo").click()
             regional = opened.value
             regional.wait_for_load_state()
             expect(regional.locator("#rv-submit-btn")).to_be_enabled()
             expect(regional.locator("#rv-country")).to_have_value(expected)
-            expect(regional.locator("#rv-alt-type")).to_have_value("CTO device")
-            expect(regional.locator("#rv-lead-time")).to_have_value("3-5 weeks")
+            expect(regional.locator("#rv-alt-type")).to_have_value("Out of stock / backordered")
+            expect(regional.locator("#rv-lead-time")).to_have_value("")
             expect(regional.locator("#rv-model")).to_have_value("")
+            expect(regional.locator("#rv-req-sku")).to_have_value("202")
+            expect(regional.locator("#rv-multi-skus")).not_to_be_checked()
+            assert launches[-1] == {"po": country, "items": [2], "text": ""}
             regional.locator("#rv-alt-type").select_option("EOL device")
             expect(regional.locator("#rv-lead-time-row")).to_be_hidden()
             regional.locator("#rv-alt-type").select_option("CTO device")
@@ -191,9 +224,12 @@ def walkthrough():
         expect(lost.locator("#rv-submit-btn")).to_be_disabled()
         assert len(writes) == count + 2
 
-        with patch.dict(os.environ, {"AIRTABLE_USER_IDS_JSON": "{}"}):
+        with patch.dict(os.environ, {"AIRTABLE_USER_IDS_JSON": "{}", "AIRTABLE_PAT": ""}):
             missing = new_filled_review()
+            expect(missing.locator("#rv-order")).to_have_text("AU")
+            expect(missing.locator("#rv-errors")).to_contain_text("AIRTABLE_PAT")
             expect(missing.locator("#rv-mapping-errors")).to_contain_text("unmapped")
+            assert len(writes) == count + 2
             missing.locator("#rv-submit-btn").click()
             expect(missing.locator("#rv-submit-status")).to_contain_text("blocked")
             expect(missing.locator("#rv-submit-btn")).to_be_enabled()
@@ -206,13 +242,16 @@ def walkthrough():
             getattr(gmail.users.return_value.drafts.return_value, action).assert_not_called()
         assert not errors, errors
         browser.close()
-        print("Local browser checks passed: standalone regional flow, fields, edits, warning, no Gmail writes, success/reload, partial failure, ambiguity/recovery, configuration, expiry.")
+        print(f"Local {'TLS proxy-equivalent' if proxy else 'direct'} browser checks passed: populated wide tab, source indices/text, regional flow, fields, edits, warning, no Gmail writes, success/reload, partial failure, ambiguity/recovery, missing configuration, expiry.")
 
 
 if __name__ == "__main__":
     if "--serve" in sys.argv:
         with fixture(5071):
             print("Mock-only Quote Desk fixture listening on 127.0.0.1:5071", flush=True)
+            result = app.app.test_client().post("/api/alt-review", json={"po": "US", "items": [0, 2], "text": TEXT})
+            print("Synthetic review: " + result.json["url"], flush=True)
             threading.Event().wait()
     else:
         walkthrough()
+        walkthrough(proxy=True)

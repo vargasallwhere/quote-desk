@@ -19,6 +19,8 @@ from scout_port import (fetch_full_order, build_confirmation_email, get_order_in
                         generate_auto_quote_email, fetch_order_status)
 
 app = Flask(__name__)
+from alt_origin import replit_origin
+app.config["ALT_REVIEW_EXTERNAL_ORIGIN"] = replit_origin(os.environ.get("REPLIT_DEV_DOMAIN"))
 from alt_reviews import register as register_alt_reviews
 register_alt_reviews(app, lambda po: get_order_info_for_ticket(po))
 _svc = {}

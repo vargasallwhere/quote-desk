@@ -9,6 +9,7 @@ from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, request, send_from_directory
 from alt_parser import build_review
+from alt_origin import allowed_write_origin
 from alt_tickets import (configuration, requester_options, mapping_errors,
                          validate_ticket, create_ticket)
 
@@ -57,8 +58,7 @@ def private(response):
 
 @bp.before_request
 def same_origin_writes():
-    origin = request.headers.get("Origin")
-    if request.method == "POST" and origin and origin != request.host_url.rstrip("/"):
+    if request.method == "POST" and not allowed_write_origin():
         return jsonify(error="Submit from this Quote Desk review tab.", retryable=False), 403
 
 
@@ -127,9 +127,6 @@ def save_result(sid, result):
 @bp.post("/api/alt-review/<sid>/submit")
 def submit_review(sid):
     # JSON-only writes plus browser Origin checking prevent cross-origin form submissions.
-    origin = request.headers.get("Origin")
-    if origin and origin != request.host_url.rstrip("/"):
-        return jsonify(error="Submit from this Quote Desk review tab.", retryable=False), 403
     data = request.get_json(silent=True)
     with database() as db:
         db.execute("BEGIN IMMEDIATE")

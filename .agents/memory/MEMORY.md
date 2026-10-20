@@ -4,3 +4,4 @@
 - [Catalog investigation](catalog-authority.md) — repair catalog access before parsing descriptions; legacy 404 does not establish deletion or migration history.
 - [Warranty source evidence](warranty-source-evidence.md) — plan selection correlates with the pictured shield; UI mapping remains unproven, and insurance is separate.
 - [Attachment rendering](attachment-rendering.md) — a mounted PDF frame can still be blank; verify painted document pixels and a local screenshot.
+- [Proxy origin evidence](proxy-origin-evidence.md) — forwarded-header sanitization was not established; local mismatch reproduction is not original-browser proof.

@@ -44,6 +44,8 @@ Approval choices show SKU totals and differing details using display-only copies
 
 ## Standalone alternative approvals
 
+Review opening and submission share the origin policy documented in `ALTERNATIVE_APPROVALS.md` (including proxy trust assumptions and verification limits). Use the exact runtime-provided Replit development hostname or direct loopback origin; forwarding headers must not establish authority. This repair does not add authentication or support arbitrary published/custom hosts.
+
 Alternative Approval Ticket opens a same-origin wide review tab for selected distinct SKUs. Opening/reviewing is read-only: never create tickets, notify customers, or write Gmail until explicit submission. The parser is the supplied Scout parser, not a catalog verifier. US defaults to US, UK/Australia use the source UK defaults, and EU/other regions stay blank for manual confirmation. Prices in this approval form are USD; do not infer currency conversion.
 
 Server-side setup (see `ALTERNATIVE_APPROVALS.md`):

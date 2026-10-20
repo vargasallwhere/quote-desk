@@ -43,7 +43,7 @@ def valid_ticket(review=None):
     return {k: ticket[k] for k in (*FIELD_MAP, "alt_type", "alt_subtype", "requested_by")}
 
 
-class AltReviewTests(unittest.TestCase):
+class AltReviewFixture(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -75,6 +75,8 @@ class AltReviewTests(unittest.TestCase):
         self.post.side_effect = [response({"id": "recTest", "fields": {"Status": "Open", "Summary/Subject": "Test summary"}}, 201),
                                  response({}, webhook_code)]
 
+
+class AltReviewTests(AltReviewFixture):
     def test_parser_source_examples(self):
         parsed = parse_alt_description(TEXT, "us")
         self.assertEqual(parsed, dict(make="Apple", model="MacBook Air", display_size='13"',

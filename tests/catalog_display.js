@@ -18,7 +18,7 @@ const base = {
   order_items: [{ name: "Samsung Essential S3", qty: 2, mpn: "", mpn_source: "unavailable" }],
 };
 context.showOrder(base);
-assert.match(elements["#order"].innerHTML, /2 × Samsung Essential S3/);
+assert.match(elements["#order"].innerHTML, /2x Samsung Essential S3/);
 assert.match(elements["#order"].innerHTML, /MPN unavailable/);
 context.showOrder({
   ...base,

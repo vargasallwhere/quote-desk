@@ -32,6 +32,8 @@ Warranty regression checks also include `node tests/warranty_display.js` and the
 
 Standalone warranty consolidation is display-only: match nonempty SKU, exact name, and unit price; preserve source order lines for all other workflows. `python3 tests/warranty_browser.py` checks the ten-unit scenario locally with mocked services and saves an ignored screenshot. `--serve` offers the mock fixture only on 127.0.0.1:5073.
 
+Items separately consolidates exact nonempty SKUs in first-seen order, sums quantities, and shows `Nx` (including `1x`). Missing/blank SKUs remain separate. The first line supplies display metadata, but catalog-verification and unavailable-MPN caveats include every source line; original diagnostics and order data stay intact. Run `node tests/items_display.js` and `python3 tests/items_browser.py` for regression checks and an ignored mock-only local screenshot.
+
 New quotes preserve the supplied plan wording beside the device, group only matching variant/plan selections, and exclude blank or explicit no-plan selections. Standalone warranty products and the existing enterprise-note heuristic stay separate. Do not invent coverage terms, duration, or price.
 
 ## Standalone alternative approvals

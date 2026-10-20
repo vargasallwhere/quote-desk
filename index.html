@@ -248,10 +248,38 @@ function catalogWarningsHtml(warnings){
   if(!warnings?.length)return "";
   return '<div class="err" role="status">'+warnings.map(w=>`<small>SKU ${esc(w.sku||"unknown")}: ${esc(w.message)}${w.mpn_source==="order_snapshot"?" Using structured order-snapshot MPN.":""}</small>`).join("")+"</div>";
 }
+function itemDisplayEntries(lines){
+  // SKU identity is exact; whitespace-only/missing SKUs never share an identity.
+  // Copies keep approval indices, emails, warranty rules and backend quantities intact.
+  const entries=[],bySku=new Map();
+  for(const line of lines){
+    const key=typeof line.sku==="string"&&line.sku.trim()?line.sku:null;
+    let entry=key===null?null:bySku.get(key);
+    if(entry)entry.qty+=line.qty;
+    else{
+      entry={...line,hasSnapshot:false,hasUnavailable:false,hasUnverified:false};
+      entries.push(entry);if(key!==null)bySku.set(key,entry);
+    }
+    entry.hasSnapshot ||= line.mpn_source==="order_snapshot";
+    entry.hasUnavailable ||= !line.mpn||line.mpn_source==="unavailable";
+    entry.hasUnverified ||= line.mpn_source!=="catalog";
+  }
+  return entries;
+}
+function itemsHtml(lines){
+  return itemDisplayEntries(lines).map(i=>{
+    const caveats=[];
+    if(i.hasSnapshot)caveats.push(i.mpn_source==="order_snapshot"
+      ?"order snapshot; catalog not verified":"some source lines use order snapshot; catalog not verified");
+    else if(i.hasUnverified)caveats.push("catalog not verified for all source lines");
+    if(i.mpn&&i.hasUnavailable)caveats.push("MPN unavailable on some source lines");
+    return `${esc(i.qty)}x ${hl(i.name)}<small class="mono">${i.mpn?hl(i.mpn):"MPN unavailable"}${caveats.length?" ("+caveats.join("; ")+")":""}</small>`;
+  }).join("<br>")||"—";
+}
 function showOrder(o,quoteWarnings=[]){
   if(o.error){$("#order").innerHTML='<p class="err">'+esc(o.error)+'</p>';return}
   $("#po").textContent=o.order_number||cur;
-  const r=o.recipient,items=o.order_items.map(i=>`${i.qty} × ${hl(i.name)}<small class="mono">${i.mpn?hl(i.mpn):"MPN unavailable"}${i.mpn_source==="order_snapshot"?" (order snapshot; catalog not verified)":""}</small>`).join("<br>")||"—";
+  const r=o.recipient,items=itemsHtml(o.order_items);
   $("#order").innerHTML=`<dl class="facts">
    <div><dt>Order status</dt><dd><span class="status" id="order-status" title="Status from Allwhere">${esc(statusText(o.status))}</span><small id="status-check" aria-live="polite">${esc(statusCheckedText(o.status_checked_at))}</small></dd></div>
    <div><dt>Customer</dt><dd>${esc(o.org_name)}<small>${esc(o.purchaser.name)}</small></dd></div>

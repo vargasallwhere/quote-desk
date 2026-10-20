@@ -69,17 +69,18 @@ def walkthrough():
         expect(section.locator("small")).to_have_text("SKU MOCK-CARE-3 · Unit price $55.70")
         expect(section.locator(".chip.ok")).to_have_text("Add protection plan")
         expect(section.locator(".chip.plain")).to_have_text("Plan Alpha")
-        # The separate Items section deliberately retains the ten original lines.
+        # Items now groups by SKU too, without changing the separate warranty rules.
         items = page.locator("#order .facts > div").filter(
             has=page.locator("dt", has_text="Items")).locator("dd")
-        assert items.inner_text().count("AppleCare+") == 10
+        assert items.inner_text().count("AppleCare+") == 1
+        expect(items).to_contain_text("10x AppleCare+")
         assert "qty 1" not in section.inner_text()
         Path("generated-artifacts").mkdir(exist_ok=True)
         page.screenshot(path="generated-artifacts/warranty-display.png", full_page=True)
         assert not errors, errors
         assert all(method == "GET" for method, _ in requests), requests
         browser.close()
-    print("Warranty browser check passed: ten-unit display, badges, unchanged Items, no writes.")
+    print("Warranty browser check passed: ten-unit display, badges, consolidated Items, no writes.")
 
 
 if __name__ == "__main__":

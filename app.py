@@ -6,6 +6,9 @@ import hashlib
 from pathlib import Path
 from urllib.parse import quote
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.parser import BytesParser
+from email import policy
 from email.utils import getaddresses, formataddr
 from email.utils import parsedate_to_datetime
 from flask import Flask, jsonify, request, Response, send_from_directory
@@ -135,8 +138,14 @@ def threads(po):
     return jsonify({"threads": out, "drafts": drafts, "synced": int(time.time())})
 
 
-def _mime(d):
+def _mime(d, attachments=()):
     msg = MIMEText(d["body"], "plain", "utf-8")
+    if attachments:
+        body = msg
+        msg = MIMEMultipart("mixed")
+        msg.attach(body)
+        for attachment in attachments:
+            msg.attach(attachment)
     msg["To"], msg["Cc"], msg["Subject"] = d["to"], d.get("cc", ""), d["subject"]
     if d.get("inReplyTo"):
         msg["In-Reply-To"] = d["inReplyTo"]
@@ -144,13 +153,54 @@ def _mime(d):
     return {"raw": base64.urlsafe_b64encode(msg.as_bytes()).decode()}
 
 
+def _draft_attachments(raw):
+    """Keep existing attachment MIME parts, including inline and nested files."""
+    if not isinstance(raw, str) or not raw:
+        raise ValueError("Missing draft MIME")
+    decoded = base64.b64decode(raw + "=" * (-len(raw) % 4), altchars=b"-_", validate=True)
+    message = BytesParser(policy=policy.default).parsebytes(decoded)
+    # The parser also accepts headerless text, so defects alone do not prove
+    # this is the complete raw MIME draft returned by Gmail.
+    if (message.get("MIME-Version", "").strip() != "1.0"
+            or not message.get("Content-Type")
+            or any(part.defects for part in message.walk())):
+        raise ValueError("Invalid draft MIME")
+    parts = []
+
+    def collect(part):
+        # Stop at attached containers (e.g. forwarded .eml), retaining them whole.
+        if (part.get_filename() or part.get_content_disposition() in ("attachment", "inline")
+                or part.get("Content-ID")
+                or (not part.is_multipart() and part.get_content_maintype() != "text")):
+            parts.append(part)
+        elif part.is_multipart():
+            for child in part.iter_parts():
+                collect(child)
+
+    collect(message)
+    return parts
+
+
 @app.post("/api/draft")
 def save_draft():
     """Create the reply draft in this thread, or update the one already there (never a second draft)."""
     d = request.get_json()
-    body = _mime(d)
-    body["threadId"] = d["threadId"]
     drafts = gmail().users().drafts()
+    attachments = []
+    if d.get("draftId"):
+        # An update replaces the entire Gmail MIME message. Read first so saving
+        # text edits never silently removes files from the existing draft.
+        try:
+            existing = drafts.get(userId="me", id=d["draftId"], format="raw").execute()["message"]
+            if existing["threadId"] != d["threadId"]:
+                return jsonify({"error": "The draft belongs to another thread. Refresh from Gmail before saving."}), 409
+            attachments = _draft_attachments(existing["raw"])
+        except HttpError:
+            raise
+        except Exception:
+            return jsonify({"error": "Could not safely read the existing Gmail draft and its attachments. Nothing was saved. Refresh from Gmail before trying again."}), 502
+    body = _mime(d, attachments)
+    body["threadId"] = d["threadId"]
     if d.get("draftId"):
         r = drafts.update(userId="me", id=d["draftId"], body={"message": body}).execute()
     else:

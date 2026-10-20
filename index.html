@@ -65,6 +65,7 @@ button.hl[aria-pressed="true"]{outline:2px solid var(--fg);outline-offset:1px}
 .att{display:inline-flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:6px 10px;margin:8px 8px 0 0;font-size:12.5px;color:var(--fg);text-decoration:none;background:var(--bg)}
 .chip{font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;background:var(--warn-soft);color:var(--warn);margin-left:6px}
 .reply{border-top:1px solid var(--line);padding:14px 16px;display:grid;gap:8px}
+#msgs:empty + .reply{border-top:0}
 .reply label{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.05em}
 .reply input,.reply textarea{width:100%;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit;padding:8px 10px}
 .reply textarea{min-height:130px;resize:vertical}
@@ -320,12 +321,22 @@ function showThreads(t){
       if(!r.ok){$("#qs").textContent=j.error||"Failed";b.disabled=false;return}openPO(cur,j.catalog_warnings||[])};return}
   const sel=t.threads.length>1?`<div class="ph"><span class="sync">${t.threads.length} threads match this PO</span><select id="ts">${t.threads.map((x,i)=>`<option value="${i}">${esc(x.messages[0].subject)} · ${x.messages.length} msg · ${fmt(x.messages.at(-1).date)}</option>`).join("")}</select></div>`:"";
   $("#thread").innerHTML=sel+'<div id="msgs"></div><div id="reply" class="reply"></div>';
-   const draw=i=>{AttachmentPreview.clear();const th=t.threads[i];$("#msgs").innerHTML=th.messages.map((m,j,a)=>msgHtml(m,j===a.length-1)).join("");wire();composer(th,t.drafts)};
+   const draw=i=>{
+     AttachmentPreview.clear();
+     const th=t.threads[i],state=composerState(th);
+     // Keep the original messages for composing/saving; hide only the editor's draft.
+     const visible=th.messages.filter(m=>!state.draft||m.id!==state.draft.id);
+     $("#msgs").innerHTML=visible.map((m,j,a)=>msgHtml(m,j===a.length-1)).join("");
+     composer(th,t.drafts,state);wire();
+   };
   draw(0);if($("#ts"))$("#ts").onchange=e=>draw(+e.target.value);
+}
+function attachmentsHtml(m){
+  return m.attachments.map(a=>`<button type="button" class="att" data-name="${esc(a.name)}" data-href="/api/attachment/${encodeURIComponent(m.id)}/${encodeURIComponent(a.id)}?name=${encodeURIComponent(a.name)}&amp;type=${encodeURIComponent(a.type)}">📎 ${esc(a.name)}</button>`).join("");
 }
 function msgHtml(m,open){
   const draft=m.labels.includes("DRAFT"),plain=(m.text||"").replace(/\s+/g," ").slice(0,140);
-  const atts=m.attachments.map(a=>`<button type="button" class="att" data-name="${esc(a.name)}" data-href="/api/attachment/${encodeURIComponent(m.id)}/${encodeURIComponent(a.id)}?name=${encodeURIComponent(a.name)}&amp;type=${encodeURIComponent(a.type)}">📎 ${esc(a.name)}</button>`).join("");
+  const atts=attachmentsHtml(m);
   const body=m.html?`<iframe sandbox="allow-same-origin" data-html="${esc(m.html)}"></iframe>`:`<pre style="white-space:pre-wrap;font:inherit;margin:0">${hl(m.text)}</pre>`;
   return `<div class="msg" data-open="${open}"><div class="mh"><b>${esc(m.from.replace(/<.*>/,""))||"—"}${draft?'<span class="chip">Draft</span>':""}</b><span>${fmt(m.date)}</span></div>
    <div class="snip">${esc(plain)}</div>
@@ -356,14 +367,20 @@ function confirmationBody(currentOrder,draftMsg){
   const phone=confirmationPhone(currentOrder);
   return "Thank you. This order is confirmed, please process it.\n\n"+(phone?phone+"\n\n":"")+"Best,\nSara";
 }
-function composer(th,drafts){
-  const msgs=th.messages,draftMsg=[...msgs].reverse().find(m=>m.labels.includes("DRAFT"));
+function composerState(th){
+  const msgs=th.messages,draft=[...msgs].reverse().find(m=>m.labels.includes("DRAFT"));
   const last=[...msgs].reverse().find(m=>!m.labels.includes("DRAFT"));
-  if(!last)return quoteComposer(th,draftMsg,drafts[draftMsg.id]);
+  const mode=!last?(draft?"quote":"empty"):last.labels.includes("SENT")?"waiting":
+    last.attachments.some(a=>/pdf/i.test(a.type)||/\.pdf$/i.test(a.name))?"confirmation":"noquote";
+  return {mode,last,draft:mode==="quote"||mode==="confirmation"?draft:null};
+}
+function composer(th,drafts,state=composerState(th)){
+  const {last,draft:draftMsg,mode}=state;
+  if(mode==="quote")return quoteComposer(th,draftMsg,drafts[draftMsg.id]);
+  if(mode==="empty"){$("#reply").innerHTML='<span class="note">No messages in this conversation.</span>';return}
+  if(mode==="waiting"){$("#reply").innerHTML='<span class="note">You replied last. Waiting on the vendor.</span>';return}
+  if(mode==="noquote"){$("#reply").innerHTML='<span class="note">The vendor\'s latest message has no quote attached, so no confirmation is due yet.</span>';return}
   const inbound=last;
-  const hasQuote=last.attachments.some(a=>/pdf/i.test(a.type)||/\.pdf$/i.test(a.name));
-  if(last.labels.includes("SENT")){$("#reply").innerHTML='<span class="note">You replied last. Waiting on the vendor.</span>';return}
-  if(!hasQuote){$("#reply").innerHTML='<span class="note">The vendor\'s latest message has no quote attached, so no confirmation is due yet.</span>';return}
   const to=draftMsg?draftMsg.to:addrs(inbound.reply_to||inbound.from),cc=draftMsg?draftMsg.cc:addrs(inbound.to,inbound.cc).split(", ").filter(a=>!to.includes(a)).join(", ");
   const body=confirmationBody(order,draftMsg);
   const fresh=(last.text||"").split(/\r?\n(?:From:|On .*wrote:|-{3,} ?Original)/)[0];
@@ -375,9 +392,10 @@ function composer(th,drafts){
   const subj=/^re:/i.test(last.subject)?last.subject:"Re: "+last.subject;
   const body2=draftMsg||kind==="instock"?body:"";
   const recipientNote=!draftMsg&&(!order||order.error||!order.recipient)?'<div class="note">Recipient details could not be loaded. No confirmation was prefilled; refresh before confirming.</div>':!draftMsg&&!confirmationPhone(order)?'<div class="note">The recipient has no phone number. Check the recipient information before sending.</div>':"";
-  $("#reply").innerHTML=`${recipientNote}<div class="note" style="margin-bottom:4px">${verdict}</div><label>${draftId?"YOUR EXISTING GMAIL DRAFT (editing it, not making a second)":"REPLY"}</label>
+  $("#reply").innerHTML=`${recipientNote}<div class="note" style="margin-bottom:4px">${verdict}</div><label>${draftId?"YOUR EXISTING GMAIL DRAFT — UNSENT (editing it, not making a second)":"REPLY"}</label>
    <input id="rto" value="${esc(to)}" aria-label="To"><input id="rcc" value="${esc(cc)}" placeholder="Cc" aria-label="Cc">
    <textarea id="rbody" aria-label="Reply">${esc(body2)}</textarea>
+   ${draftMsg&&draftMsg.attachments.length?`<div aria-label="Draft attachments">${attachmentsHtml(draftMsg)}</div>`:""}
    <div class="row"><span class="note" id="rstat">Nothing is sent until you press Send.</span><span><button class="btn" id="rsave">Save draft to Gmail</button> <button class="btn primary" id="rsend">Send…</button></span></div>`;
   wireHL($("#rbody"));
   const quote=()=>"\n\nOn "+last.date+", "+last.from+" wrote:\n"+(last.text||"").split("\n").map(l=>"> "+l).join("\n");
@@ -397,6 +415,7 @@ function quoteComposer(th,d,draftId){
   $("#reply").innerHTML=`<div class="note" style="margin-bottom:4px">Quote request to the vendor. It is a draft in your Gmail and has not been sent.</div>
    <input id="rto" value="${esc(d.to)}" aria-label="To"><input id="rcc" value="${esc(d.cc)}" placeholder="Cc" aria-label="Cc"><input id="rsub" value="${esc(d.subject)}" aria-label="Subject">
    <textarea id="rbody" aria-label="Quote request">${esc(d.text)}</textarea>
+   ${d.attachments.length?`<div aria-label="Draft attachments">${attachmentsHtml(d)}</div>`:""}
    <div class="row"><span class="note" id="rstat">Nothing is sent until you press Send.</span><span><button class="btn" id="rsave">Save draft to Gmail</button> <button class="btn primary" id="rsend">Send…</button></span></div>`;
   wireHL($("#rbody"));
   const save=async()=>{const r=await fetch("/api/draft",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({threadId:th.id,draftId,to:$("#rto").value,cc:$("#rcc").value,subject:$("#rsub").value,body:$("#rbody").value})});

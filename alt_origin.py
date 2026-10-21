@@ -46,6 +46,13 @@ def replit_origin(domain):
     return None
 
 
+def public_origin(value):
+    """A single operator-pinned HTTPS origin; invalid startup config fails closed."""
+    if not valid_origin(value) or urlsplit(value).scheme != "https":
+        raise ValueError("alternative_reviews.public_origin must be one HTTPS origin without a trailing slash.")
+    return value
+
+
 def allowed_write_origin():
     origin = request.headers.get("Origin")
     # Preserve non-browser JSON clients. JSON-only endpoint validation still applies.
@@ -53,9 +60,10 @@ def allowed_write_origin():
         return True
     if not valid_origin(origin):
         return False
-    external = current_app.config.get("ALT_REVIEW_EXTERNAL_ORIGIN")
-    if external and valid_origin(external) and origin == external:
-        return True
+    for key in ("ALT_REVIEW_EXTERNAL_ORIGIN", "ALT_REVIEW_PUBLIC_ORIGIN"):
+        external = current_app.config.get(key)
+        if external and valid_origin(external) and origin == external:
+            return True
     # Direct local operation needs no proxy trust, with exact scheme/host/port.
     direct = request.host_url.rstrip("/")
     if not valid_origin(direct) or origin != direct:

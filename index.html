@@ -431,7 +431,7 @@ function quoteComposer(th,d,draftId){
      .then(r=>r.json().then(j=>{if(!r.ok)throw new Error(j.error||"send failed");$("#rstat").textContent="Sent at "+new Date().toLocaleTimeString()+". Reloading from Gmail…";setTimeout(()=>openPO(cur),1500)}))
      .catch(e=>{$("#rstat").textContent="Not sent: "+e.message+". Check Gmail before trying again.";b.disabled=false})};
 }
-</script><script>
+</script><script src="/static/alternative-launch.js"></script><script>
 function uniq(items){
   const out=[],bySku=new Map();
   items.forEach((it,i)=>{
@@ -473,6 +473,7 @@ function pickerFailure(message,withText,btnLabel,endpoint){
 function picker(withText,btnLabel,endpoint){
   if(picker.launch)return;
   const po=cur,generation=req,info=tinfo;
+  const alternativeState={};
   let list;
   try{
     if(!info||info.error||!Array.isArray(info.items)||!info.items.length||
@@ -493,7 +494,13 @@ function picker(withText,btnLabel,endpoint){
   }).join("")+
    (withText?'<label for="apText">Alternative description (optional)</label><textarea id="apText" maxlength="20000" placeholder="Paste the vendor\'s alternative from the quote (optional)"></textarea>':"")+
     catalogWarningsHtml(info.catalog_warnings)+
-    `<div><button class="btn primary" id="apGo">${btnLabel}</button> <span class="note" id="apStat" role="status" aria-live="polite"></span></div>`;
+    `<div><button class="btn primary" id="apGo">${btnLabel}</button> <span class="note" id="apStat" role="status" aria-live="polite"></span></div>`+
+    (endpoint==="/api/alt-review"?'<p><a id="apRecover" target="_blank" rel="noopener noreferrer" hidden>Open saved review</a> <small>Your unsaved vendor reply stays here. This link opens the existing review without creating another session.</small></p>':"");
+    if(endpoint==="/api/alt-review"){
+      const invalidate=()=>{$("#apRecover").hidden=true};
+      $("#apText").oninput=invalidate;
+      document.querySelectorAll("#apbox input[type=checkbox]").forEach(input=>input.onchange=invalidate);
+    }
     $("#apText")?.focus?.();
   }catch(e){
     pickerFailure("Could not show requested items. Retry order details below.",withText,btnLabel,endpoint);return;
@@ -502,6 +509,25 @@ function picker(withText,btnLabel,endpoint){
     if(picker.launch)return;
     const button=$("#apGo"),status=$("#apStat");
     if(cur!==po||req!==generation||tinfo!==info){status.textContent="The order changed. Click Alternative Approval Ticket again.";return}
+    if(endpoint==="/api/alt-review"){
+      if(typeof openAlternativeReview!=="function"){
+        status.textContent="The review launcher file could not load. Retrying that file only; your vendor reply is unchanged.";
+        button.disabled=true;
+        const script=document.createElement("script");
+        const failed=()=>{button.disabled=false;status.textContent="The review launcher file is unavailable. Check your connection and click Open again. Your selection, text and vendor reply are unchanged."};
+        const retryTimer=setTimeout(failed,15000);
+        script.src="/static/alternative-launch.js?retry="+Date.now();
+        script.onerror=()=>{clearTimeout(retryTimer);failed()};
+        script.onload=()=>{clearTimeout(retryTimer);button.disabled=false;status.textContent=typeof openAlternativeReview==="function"?"Review launcher loaded. Click Open again.":"The review launcher could not start. Ask the app owner to check it."};
+        document.head.append(script);return;
+      }
+      const items=[...document.querySelectorAll("#apbox input:checked")].map(x=>+x.value);
+      if(!items.length){status.textContent="Select at least one item.";return}
+      return openAlternativeReview({po,items,text:$("#apText").value,state:alternativeState,button,status,recovery:$("#apRecover"),
+        current:()=>cur===po&&req===generation&&tinfo===info&&$("#apGo")===button,
+        start:launch=>{picker.launch=launch},
+        finish:launch=>{if(picker.launch===launch)picker.launch=null}});
+    }
     const launch={controller:null,window:null,cancelled:false};
     picker.launch=launch;
     let timer;

@@ -1,8 +1,10 @@
 """Same-origin review endpoints with durable, atomic, single-attempt submission."""
 import json
+import hashlib
 import os
 import secrets
 import sqlite3
+import re
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -28,6 +30,7 @@ def database():
     db.row_factory = sqlite3.Row
     try:
         db.execute("CREATE TABLE IF NOT EXISTS reviews (sid TEXT PRIMARY KEY, expires REAL, review TEXT, state TEXT, result TEXT)")
+        db.execute("CREATE TABLE IF NOT EXISTS review_launches (launch_id TEXT PRIMARY KEY, fingerprint TEXT, sid TEXT)")
         with db:
             yield db
     finally:
@@ -59,7 +62,9 @@ def private(response):
 @bp.before_request
 def same_origin_writes():
     if request.method == "POST" and not allowed_write_origin():
-        return jsonify(error="Submit from this Quote Desk review tab.", retryable=False), 403
+        return jsonify(
+            error="This address is not configured for Quote Desk review writes. Ask the app owner to check quote-desk.toml and restart the serving app. Your selection and vendor reply have not changed.",
+            stage="origin", retryable=False), 403
 
 
 @bp.get("/alt-review")
@@ -67,6 +72,11 @@ def page():
     response = send_from_directory(ASSETS, "alt-review.html")
     response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
     return response
+
+
+@bp.get("/alt-review-launch")
+def waiting():
+    return send_from_directory(ASSETS, "alt-review-launch.html")
 
 
 @bp.get("/alt-review-assets/<name>")
@@ -88,24 +98,65 @@ def register(app, lookup):
         indices = data.get("items")
         if not isinstance(indices, list) or not indices or len(indices) > 500:
             return jsonify(error="Select at least one requested item (up to 500)."), 400
+        launch_id = data.get("launch_id")
+        if launch_id is not None and (not isinstance(launch_id, str) or
+                                     not re.fullmatch(r"[a-f0-9]{32}", launch_id)):
+            return jsonify(error="Invalid review launch identifier.", stage="creation"), 400
+        fingerprint = hashlib.sha256(json.dumps(
+            [po.strip(), indices, text], separators=(",", ":")).encode()).hexdigest()
+
+        def existing(db):
+            if not launch_id:
+                return None
+            row = db.execute(
+                "SELECT l.fingerprint,l.sid FROM review_launches l JOIN reviews r ON r.sid=l.sid "
+                "WHERE l.launch_id=? AND r.expires>?", (launch_id, time.time())).fetchone()
+            if row:
+                if row["fingerprint"] != fingerprint:
+                    return jsonify(error="The saved launch has different items or text. Reopen the picker.", stage="creation"), 409
+                return jsonify(url="/alt-review?session=" + row["sid"])
+            return None
+
+        try:
+            with database() as db:
+                previous = existing(db)
+                if previous is not None:
+                    return previous
+        except (sqlite3.Error, OSError):
+            return jsonify(error="The local review store is unavailable. Retry opening; no ticket was submitted.",
+                           stage="storage"), 503
         try:
             info = lookup(po.strip())
         except Exception:
-            return jsonify(error="Order lookup failed. Reload the order before opening a review."), 502
+            return jsonify(error="Order lookup failed. Retry opening shortly; no need to reload your email.", stage="lookup"), 502
         if not isinstance(info, dict) or info.get("error") or not info.get("order_number"):
-            return jsonify(error="The order could not be verified. Reload it before opening a review."), 502
+            return jsonify(error="The order could not be verified. Retry opening shortly; no need to reload your email.", stage="lookup"), 502
         try:
             review = build_review(info, indices, text.strip())
         except ValueError as exc:
-            return jsonify(error=str(exc)), 400
+            return jsonify(error=str(exc), stage="selection"), 400
+        except Exception:
+            return jsonify(error="The order details could not be prepared for review. Ask the app owner to check the order data.",
+                           stage="preparation"), 502
         sid = secrets.token_urlsafe(32)
-        with database() as db:
-            db.execute("BEGIN IMMEDIATE")
-            db.execute("DELETE FROM reviews WHERE expires < ?", (time.time(),))
-            if db.execute("SELECT count(*) FROM reviews").fetchone()[0] >= MAX_REVIEWS:
-                return jsonify(error="Too many active reviews. Close unused reviews and try again after their two-hour expiry."), 503
-            db.execute("INSERT INTO reviews VALUES (?,?,?,?,NULL)",
-                       (sid, time.time() + TTL, json.dumps(review), "pending"))
+        try:
+            with database() as db:
+                db.execute("BEGIN IMMEDIATE")
+                previous = existing(db)
+                if previous is not None:
+                    return previous
+                db.execute("DELETE FROM reviews WHERE expires < ?", (time.time(),))
+                db.execute("DELETE FROM review_launches WHERE sid NOT IN (SELECT sid FROM reviews)")
+                if db.execute("SELECT count(*) FROM reviews").fetchone()[0] >= MAX_REVIEWS:
+                    return jsonify(error="Too many active reviews. Close unused reviews and try again after their two-hour expiry.",
+                                   stage="storage"), 503
+                db.execute("INSERT INTO reviews VALUES (?,?,?,?,NULL)",
+                           (sid, time.time() + TTL, json.dumps(review), "pending"))
+                if launch_id:
+                    db.execute("INSERT INTO review_launches VALUES (?,?,?)", (launch_id, fingerprint, sid))
+        except (sqlite3.Error, OSError):
+            return jsonify(error="The local review store could not save this review. Retry opening; no ticket was submitted.",
+                           stage="storage"), 503
         return jsonify(url="/alt-review?session=" + sid)
 
     app.register_blueprint(bp)

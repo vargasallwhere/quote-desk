@@ -14,3 +14,16 @@ Local malformed-item and sandbox/popup reproductions establish real launch defec
 **Why:** No approved original-browser/address verification was available; a matching symptom is not evidence of an identical cause.
 
 **How to apply:** Report the locally demonstrated cause and the unresolved original-browser confirmation separately. Request browser/version, embedded-versus-separate-tab context and sanitized origin facts before authorized read-only diagnosis; do not infer the cause from earlier origin-only work.
+
+On 2026-10-21 the user supplied a screenshot of the second-click origin-denial
+message and confirmed they were using the published address, not development
+preview. That identifies origin rejection as the reported stage; it does not
+verify the repaired app in that browser.
+
+**Why:** Earlier investigations only had local reproductions. The new evidence
+distinguishes the actual second-click report from those earlier hypotheses.
+
+**How to apply:** Use the independently verified operator-pinned published
+origin documented in `ALTERNATIVE_APPROVALS.md`; do not expand development-origin
+trust or infer authority from incoming headers. Keep local verification and
+verification after the repair reaches the reporting app explicitly separate.

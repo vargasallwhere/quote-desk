@@ -2,7 +2,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
 const html = fs.readFileSync("index.html", "utf8");
-const source = html.slice(html.indexOf("function uniq("), html.indexOf('$("#bAr").onclick='));
+const source = fs.readFileSync("static/alternative-launch.js", "utf8") +
+  html.slice(html.indexOf("function uniq("), html.indexOf('$("#bAr").onclick='));
 
 function setup(popup = {}) {
   const elements = new Map();
@@ -13,7 +14,8 @@ function setup(popup = {}) {
   const calls = [];
   const context = {
     $, esc: String, cur: "TEST-PO", req:1, location:{origin:"http://localhost"},
-    URL, AbortController, AbortSignal, setTimeout, clearTimeout,
+    URL, AbortController, AbortSignal, crypto:require("node:crypto").webcrypto,
+    setTimeout:(fn,ms)=>ms===100?setImmediate(fn):setTimeout(fn,ms), clearTimeout,
     tinfo: {order_number:"TEST-PO",items:[
       {sku:"1",product_name:"First"}, {sku:"1",product_name:"Duplicate"}, {sku:"2",product_name:"Second"}
     ]},
@@ -21,7 +23,10 @@ function setup(popup = {}) {
     document: {querySelectorAll:()=>[{value:"0"},{value:"2"}]},
     fetch: async (url, options) => { calls.push({url,options}); return {ok:true,json:async()=>({url:"/alt-review?session=test"})};}
   };
-  if(popup&&!Object.getOwnPropertyDescriptor(popup,"document"))popup.document={body:{textContent:""}};
+  if(popup){
+    Object.defineProperty(popup,"location",{get(){return {href:this.href}},set(value){this.href=value},configurable:true});
+    if(!Object.getOwnPropertyDescriptor(popup,"document"))popup.document={documentElement:{dataset:{reviewState:"ready"}}};
+  }
   vm.createContext(context);
   vm.runInContext(source, context);
   return {context, $, calls};
@@ -38,12 +43,17 @@ function setup(popup = {}) {
   assert.match(t.$("#apbox").innerHTML, /Second/);
   await t.$("#apGo").onclick();
   assert.equal(t.calls[0].url, "/api/alt-review");
-  assert.deepEqual(JSON.parse(t.calls[0].options.body), {po:"TEST-PO",items:[0,2],text:"vendor alternative"});
-  assert.equal(popup.location, "/alt-review?session=test");
+   const payload=JSON.parse(t.calls[0].options.body);
+   assert.match(payload.launch_id,/^[a-f0-9]{32}$/);
+   delete payload.launch_id;
+   assert.deepEqual(payload, {po:"TEST-PO",items:[0,2],text:"vendor alternative"});
+   assert.equal(popup.href, "http://localhost/alt-review?session=test");
   assert.equal(t.$("#rbody").value, "Unsaved vendor reply");
   assert.equal(t.calls.length, 1);
   assert.equal(popup.opener,null);
-  assert.match(popup.document.body.textContent,/Opening Quote Desk/);
+   assert.match(t.$("#apStat").textContent,/Review ready/);
+   await t.$("#apGo").onclick();
+   assert.equal(t.calls.length,1,"retry uses the created session");
   const items=[
     {sku:"137",product_name:"First <script>",quantity:2,protection_plan:"Plan <Alpha>",price:10},
     {sku:"OTHER",product_name:"Second",quantity:4},
@@ -82,8 +92,9 @@ function setup(popup = {}) {
   const restricted=setup({close(){}, get document(){throw Object.assign(new Error("restricted"),{name:"SecurityError"})}});
   restricted.$("#bAlt").onclick();
   await restricted.$("#apGo").onclick();
-  assert.match(restricted.$("#apStat").textContent,/browser restricted/);
-  assert.equal(restricted.calls.length,0);
+   assert.match(restricted.$("#apStat").textContent,/could not confirm/);
+   assert.equal(restricted.calls.length,1);
+   assert.equal(restricted.$("#apRecover").hidden,false);
   assert.equal(restricted.$("#apGo").disabled,false);
   const thrown=setup({});
   thrown.context.window.open=()=>{throw Object.assign(new Error(),{name:"SecurityError"})};
@@ -105,7 +116,7 @@ function setup(popup = {}) {
   finish({ok:true,json:async()=>({url:"/alt-review?session=test"})});
   await pending;
   assert.equal(switched.context.window.open().closed,true);
-  assert.equal(switched.context.window.open().location,undefined);
+   assert.equal(switched.context.window.open().href,undefined);
   const unsafe=setup({close(){}});
   unsafe.context.fetch=async()=>({ok:true,json:async()=>({url:"https://outside.invalid/alt-review?session=test"})});
   unsafe.$("#bAlt").onclick();

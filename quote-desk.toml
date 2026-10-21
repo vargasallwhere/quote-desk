@@ -1,0 +1,3 @@
+# Operator-controlled addresses, read at startup. Never derive these from requests.
+[alternative_reviews]
+public_origin = "https://quote-desk-sara455.replit.app"

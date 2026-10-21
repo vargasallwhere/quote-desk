@@ -3,6 +3,7 @@ Reuses Scout Dev's login and order lookup; edits nothing there."""
 import base64, os, sys, time
 import re
 import hashlib
+import tomllib
 from pathlib import Path
 from urllib.parse import quote
 from email.mime.text import MIMEText
@@ -19,8 +20,11 @@ from scout_port import (fetch_full_order, build_confirmation_email, get_order_in
                         generate_auto_quote_email, fetch_order_status)
 
 app = Flask(__name__)
-from alt_origin import replit_origin
+from alt_origin import replit_origin, public_origin
 app.config["ALT_REVIEW_EXTERNAL_ORIGIN"] = replit_origin(os.environ.get("REPLIT_DEV_DOMAIN"))
+with (Path(__file__).resolve().parent / "quote-desk.toml").open("rb") as settings:
+    app.config["ALT_REVIEW_PUBLIC_ORIGIN"] = public_origin(
+        tomllib.load(settings)["alternative_reviews"]["public_origin"])
 from alt_reviews import register as register_alt_reviews
 register_alt_reviews(app, lambda po: get_order_info_for_ticket(po))
 _svc = {}
@@ -119,7 +123,7 @@ def attachment_ocr(filename):
 
 @app.after_request
 def fresh_order_responses(response):
-    if request.path in ("/", "/static/attachment-preview.js", "/static/attachment-preview.css", "/static/pdf-ocr.js", "/static/pdf-ocr-worker.js") or request.path.startswith(("/attachment-renderer/", "/attachment-ocr/", "/api/order/", "/api/order-status/", "/api/ticket-info/")):
+    if request.path in ("/", "/static/alternative-launch.js", "/static/attachment-preview.js", "/static/attachment-preview.css", "/static/pdf-ocr.js", "/static/pdf-ocr-worker.js") or request.path.startswith(("/attachment-renderer/", "/attachment-ocr/", "/api/order/", "/api/order-status/", "/api/ticket-info/")):
         response.headers["Cache-Control"] = "no-store"
         response.headers["Pragma"] = "no-cache"
     return response

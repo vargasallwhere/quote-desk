@@ -5,12 +5,46 @@ from unittest.mock import patch
 from flask import request
 
 import alt_reviews
-from alt_origin import replit_origin, valid_origin
+from alt_origin import replit_origin, valid_origin, public_origin
 from test_alt_reviews import AltReviewFixture, TEXT, valid_ticket
 import app
 
 
 class AltOriginTests(AltReviewFixture):
+    def test_reported_published_address_requires_operator_pin(self):
+        # Reproduce the screenshot's exact rejected stage without any public access.
+        origin = "https://quote-desk-sara455.replit.app"
+        kwargs = self.origins("http://internal.test:5000", origin, {
+            "X-Forwarded-Host": "attacker.test", "X-Forwarded-Proto": "garbage"})
+        data = {"po":"SYNTHETIC", "items":[2, 0], "text":TEXT}
+        with patch.dict(app.app.config, {"ALT_REVIEW_EXTERNAL_ORIGIN":None,
+                                        "ALT_REVIEW_PUBLIC_ORIGIN":None}):
+            denied = self.client.post("/api/alt-review", json=data, **kwargs)
+            self.assertEqual(denied.status_code, 403)
+            self.assertEqual(denied.json["stage"], "origin")
+            self.lookup.assert_not_called()
+        with patch.dict(app.app.config, {"ALT_REVIEW_PUBLIC_ORIGIN":public_origin(origin)}):
+            opened = self.client.post("/api/alt-review", json=data, **kwargs)
+            self.assertEqual(opened.status_code, 200)
+            sid = opened.json["url"].split("session=")[1]
+            review = self.read(sid).json["review"]
+            self.assertEqual(review["selected_skus"], ["202","101"])
+            self.assertEqual(review["model"], "MacBook Air")
+            for bad in ("https://other.replit.app", origin + ".evil.test", "null"):
+                denied = self.client.post("/api/alt-review", json=data,
+                    **self.origins("http://internal.test:5000", bad,
+                                   {"X-Forwarded-Host":origin.split("://")[1]}))
+                self.assertEqual(denied.status_code, 403)
+        self.post.assert_not_called()
+        self.gmail.assert_not_called()
+
+    def test_public_origin_startup_validation(self):
+        for value in ("", None, "http://example.test", "https://example.test/",
+                      "https://*.replit.app", "https://example.test/path",
+                      "https://user@example.test", "https://a.test,https://b.test"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                public_origin(value)
+
     def origins(self, base, origin, headers=None):
         return dict(base_url=base, headers={"Origin": origin, **(headers or {})})
 

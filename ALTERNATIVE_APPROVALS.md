@@ -65,7 +65,9 @@ Keep the file on ordinary restarts to preserve locks/results. A process interrup
 
 Both creation and submission use the same guard, before lookup, session storage or external writes. Previously it compared `Origin` directly with Flask's `request.host_url`. In a synthetic reproduction, `Origin: https://quote-test.replit.dev` and backend `http://internal.test:5000` fail that comparison even with forwarding headers present. This reproduces the reported error path; no request metadata from the original browser was available, so its precise host/scheme mismatch is not proven.
 
-At application startup, `REPLIT_DEV_DOMAIN` pins one exact HTTPS origin in Flask configuration (`ALT_REVIEW_EXTERNAL_ORIGIN`). Only a valid bare hostname under `.replit.dev`, with no URL components or port, is accepted from that runtime setting. This is **not** a wildcard permission for other Replit apps. The request's backend scheme/host may differ behind TLS termination and host rewriting; they do not redefine the pinned origin. A missing/invalid runtime hostname adds no external origin. This setting supports the runtime's development address, not arbitrary aliases or a published/custom domain. Those require an independently verified, operator-controlled origin configuration; never derive them from a request.
+At application startup, `REPLIT_DEV_DOMAIN` pins one exact HTTPS development origin in Flask configuration (`ALT_REVIEW_EXTERNAL_ORIGIN`). Only a valid bare hostname under `.replit.dev`, with no URL components or port, is accepted from that runtime setting. This is **not** a wildcard permission for other Replit apps. The request's backend scheme/host may differ behind TLS termination and host rewriting; they do not redefine the pinned origin. A missing/invalid runtime hostname adds no development origin.
+
+The separately operator-controlled `quote-desk.toml` setting `alternative_reviews.public_origin` pins the one supported published origin (`ALT_REVIEW_PUBLIC_ORIGIN`). It is currently `https://quote-desk-sara455.replit.app`, supplied by the user and independently confirmed through deployment metadata (no public HTTP request). It must be a single HTTPS origin with no trailing slash, path, query, credentials or wildcard; malformed settings stop startup rather than silently trusting another address. To change the supported address, independently verify ownership, edit that file and restart the serving app. Request Host/Origin/forwarding headers never populate this setting. This adds the existing app's exact address, not a new publication, wildcard `.replit.app` permission, or authentication.
 
 Direct localhost, IPv4 loopback and IPv6 loopback operation retains exact request scheme/host/port matching. `localhost` and `127.0.0.1`, different ports, HTTP and HTTPS are not interchangeable. A browser `Origin` must be one valid serialized origin: foreign hosts, deceptive suffixes, userinfo, paths, trailing slashes, lists, `null`, empty and malformed values are rejected. An explicitly absent Origin remains supported for existing non-browser JSON clients. Both endpoints still reject form/text writes through their JSON validation. This is CSRF protection, not authentication.
 
@@ -76,6 +78,62 @@ Direct localhost, IPv4 loopback and IPv6 loopback operation retains exact reques
 Only local synthetic requests/services were used: no live Airtable records, notifications, Gmail changes, public-preview tests or publication. The original reporting browser and real edge path still need confirmation after these changes reach that app. Local success alone does not prove that browser is fixed.
 
 ## Safe verification
+
+### Second-click origin diagnosis and saved-review recovery (2026-10-21)
+
+The user's screenshot shows **“Could not open: Submit from this Quote Desk review tab.”**
+after the item picker was already visible. The user supplied the published
+`.replit.app` address above. Unlike the earlier first-click and development-proxy
+investigations, this identifies the actual failing stage: the review creation
+POST is rejected by the origin guard, before order lookup, parsing or storage.
+The old configuration never admitted that published origin. A local Flask
+request with that Origin reproduced HTTP 403 and the exact original error;
+the lookup mock was not called. The independent published-origin pin repairs
+that configuration omission without reflecting request headers or trusting proxy
+chains. No production request was made and the reporting browser remains unverified.
+
+Creation now reports distinct address (403), lookup, selection/preparation and
+local-storage stages. Failures retain the picker, text and vendor composer.
+Retry does not reload Gmail or the order UI. Each unchanged opening attempt has
+a random launch ID, persisted atomically with its session in the existing private
+store. A lost creation response retries that same ID and returns the saved
+session; conflicting payloads fail instead of reusing the wrong items/text.
+Expired launch mappings are cleaned with expired sessions. This does not change
+submission validation or its durable single-attempt locks.
+
+The alternative launcher opens a same-origin waiting page in a dedicated wide
+window, not a document-written `about:blank` tab. Opener detachment is attempted
+but browser document-access restrictions do not block creation. After saving, an
+explicit **Open saved review** link opens the same validated same-origin session.
+Navigation errors, closed tabs, review-load errors and unconfirmed readiness
+retain that link and the retry button. No automatic navigation replaces the
+vendor tab. An isolated missing-script reproduction also demonstrated that the
+old launcher claimed “Review tab opened” despite a disabled empty form; the new
+launcher only says **Review ready** after observing the exact same-origin
+session's post-population readiness marker. Observation is bounded by ten seconds
+and 100 checks; isolation or missing assets produce recovery instructions, never
+assumed success. Missing review HTML/script/session data has visible retry help.
+
+Focused regressions: `python3 tests/alt_launch_recovery.py` uses real loopback TLS
+windows and the real Flask creation endpoint, with synthetic published-Origin
+and internal-Host facts at a local proxy boundary. It first reproduces rejection,
+then pins the independently configured address and asserts populated source SKU,
+order, blank/unrecognized/pasted text, missing ticket credentials, explicit
+saved-link recovery after navigation failure, missing script/session recovery,
+lost-response reuse and unchanged unsaved vendor edits. No browser request leaves
+loopback. `python3 tests/alt_browser.py` retains direct/TLS regional walkthroughs,
+popup and real sandbox restrictions, HTTP/non-JSON/network errors, pending order
+switch cancellation and mocked submission/duplicate-lock checks.
+`tests/test_alt_origin.py` adds published-address and deceptive-host cases;
+`tests/test_alt_reviews.py` adds storage/preparation failures, repeated/concurrent
+launch IDs and reuse of already-submitted sessions without another external write.
+Screenshot: `generated-artifacts/alternative-origin-recovery.jpg` (synthetic data).
+
+This fork does not publish or modify production configuration. The committed
+configuration and code must reach the serving app through the normal release
+process before a refresh there can exercise the repair. Neither local passing
+tests nor metadata confirmation establish that the reporting browser now works.
+No live customer order, Airtable, webhook or Gmail operation was used.
 
 ### Inert opening diagnosis and recovery (2026-10-20)
 

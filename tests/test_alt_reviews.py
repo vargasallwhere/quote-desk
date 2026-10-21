@@ -77,6 +77,65 @@ class AltReviewFixture(unittest.TestCase):
 
 
 class AltReviewTests(AltReviewFixture):
+    def test_creation_retry_reuses_session_even_after_submission_or_lost_response(self):
+        launch_id = "a" * 32
+        sid = self.open(launch_id=launch_id, items=[2, 0])
+        self.lookup.reset_mock()
+        self.assertEqual(self.open(launch_id=launch_id, items=[2, 0]), sid)
+        self.lookup.assert_not_called()
+        self.mock_success()
+        self.submit(sid, valid_ticket(self.read(sid).json["review"]))
+        before = self.post.call_count
+        self.assertEqual(self.open(launch_id=launch_id, items=[2, 0]), sid)
+        self.assertEqual(self.read(sid).json["state"], "completed")
+        self.assertEqual(self.post.call_count, before)
+        for override in ({"items":[0]}, {"text":"changed"}):
+            payload = {"po":"123-1-TEST","items":[2,0],"text":TEXT,"launch_id":launch_id, **override}
+            self.assertEqual(self.client.post("/api/alt-review", json=payload).status_code, 409)
+        with app.app.app_context(), alt_reviews.database() as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM reviews").fetchone()[0], 1)
+
+    def test_creation_stage_errors_and_bad_launch_id(self):
+        for launch_id in ("", "not-valid", [], "A"*32):
+            result = self.client.post("/api/alt-review", json={
+                "po":"TEST","items":[0],"launch_id":launch_id})
+            self.assertEqual(result.status_code, 400)
+        with patch("alt_reviews.database", side_effect=OSError("private storage path")):
+            result = self.client.post("/api/alt-review", json={"po":"TEST","items":[0]})
+            self.assertEqual(result.status_code, 503)
+            self.assertEqual(result.json["stage"], "storage")
+            self.assertNotIn("private storage path", str(result.json))
+        with patch("alt_reviews.build_review", side_effect=TypeError("private malformed data")):
+            result = self.client.post("/api/alt-review", json={"po":"TEST","items":[0]})
+            self.assertEqual(result.status_code, 502)
+            self.assertEqual(result.json["stage"], "preparation")
+        self.post.assert_not_called()
+
+    def test_concurrent_open_retries_share_one_session(self):
+        barrier = threading.Barrier(2)
+        def lookup(_po):
+            barrier.wait(timeout=5)
+            return deepcopy(INFO)
+        self.lookup.side_effect = lookup
+        results = []
+        def open_once():
+            with app.app.test_client() as client:
+                result = client.post("/api/alt-review", json={
+                    "po":"TEST", "items":[0,2], "text":TEXT, "launch_id":"b"*32})
+                results.append((result.status_code, result.json))
+        threads = [threading.Thread(target=open_once) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(10)
+            self.assertFalse(thread.is_alive())
+        self.assertEqual(len(results), 2)
+        self.assertEqual([r[0] for r in results], [200,200])
+        self.assertEqual(results[0][1]["url"], results[1][1]["url"])
+        with app.app.app_context(), alt_reviews.database() as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM reviews").fetchone()[0], 1)
+        self.post.assert_not_called()
+
     def test_parser_source_examples(self):
         parsed = parse_alt_description(TEXT, "us")
         self.assertEqual(parsed, dict(make="Apple", model="MacBook Air", display_size='13"',

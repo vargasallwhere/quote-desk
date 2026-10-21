@@ -25,7 +25,8 @@ def fixture(port=0, proxy=False):
         temp = stack.enter_context(tempfile.TemporaryDirectory())
         stack.enter_context(patch.dict(os.environ, CONFIG, clear=True))
         stack.enter_context(patch.dict(app.app.config, {
-            "ALT_REVIEW_DB": temp + "/browser.sqlite3", "ALT_REVIEW_EXTERNAL_ORIGIN": None}))
+            "ALT_REVIEW_DB": temp + "/browser.sqlite3", "ALT_REVIEW_EXTERNAL_ORIGIN": None,
+            "ALT_REVIEW_PUBLIC_ORIGIN": None}))
         stack.enter_context(patch.object(app, "SCOUT", ""))
         def info(po):
             countries = {"US": "United States", "UK": "United Kingdom", "EU": "Ireland", "AU": "Australia"}
@@ -77,6 +78,9 @@ def fixture(port=0, proxy=False):
             environ["wsgi.url_scheme"] = "http"
             environ["HTTP_X_FORWARDED_HOST"] = "attacker.test, " + public_host
             environ["HTTP_X_FORWARDED_PROTO"] = "http, https"
+            if environ.get("HTTP_ORIGIN") and mode.get("reported_origin"):
+                # Synthetic browser Origin at the proxy boundary; never contacts that host.
+                environ["HTTP_ORIGIN"] = mode["reported_origin"]
             if environ.get("HTTP_ORIGIN"):
                 mode["proxy_facts"] = {
                     "origin": environ["HTTP_ORIGIN"], "scheme": environ["wsgi.url_scheme"],
@@ -105,7 +109,7 @@ def walkthrough(proxy=False):
         context.route("**/*", lambda route: route.continue_() if route.request.url.startswith(base + "/") else route.abort())
         page = context.new_page()
         launches = []
-        page.on("request", lambda req: launches.append(req.post_data_json)
+        page.on("request", lambda req: launches.append({k:v for k,v in req.post_data_json.items() if k != "launch_id"})
                 if req.method == "POST" and req.url == base + "/api/alt-review" else None)
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
@@ -254,7 +258,7 @@ def launch_failures():
         context.route("**/*", lambda route: route.continue_() if route.request.url.startswith(base + "/") else route.abort())
         errors, launches = [], []
         context.on("page", lambda tab: tab.on("pageerror", lambda error: errors.append(str(error))))
-        context.on("request", lambda req: launches.append(req.post_data_json)
+        context.on("request", lambda req: launches.append({k:v for k,v in req.post_data_json.items() if k != "launch_id"})
                    if req.method == "POST" and req.url == base + "/api/alt-review" else None)
         page = context.new_page()
         # Actual HTTP response shape reproducing the old first-click TypeError.
@@ -326,6 +330,7 @@ def launch_failures():
         expect(review.locator("#rv-model")).to_have_value("MacBook Air")
         expect(review.locator("#rv-submit-btn")).to_be_enabled()
         expect(review.locator("#rv-load-help")).to_be_hidden()
+        expect(page.locator("#apStat")).to_contain_text("Review ready", timeout=15000)
 
         # Session GET failures leave actionable help in the review, never an empty tab.
         review.route("**/api/alt-review/*", lambda route: route.fulfill(status=503, body="unavailable"))
@@ -339,6 +344,7 @@ def launch_failures():
         review.close()
 
         # Order switch during a delayed opening cancels and closes the pending tab.
+        page.locator("#apText").fill(TEXT + " new launch")
         held = []
         def hold(route):
             held.append(route)
@@ -348,7 +354,7 @@ def launch_failures():
         pending = opened.value
         expect(pending.locator("body")).to_contain_text("Opening Quote Desk review")
         # Pump browser events until the request reaches the intercepted route.
-        expect(page.locator("#apStat")).to_have_text("Opening review…")
+        expect(page.locator("#apStat")).to_have_text("Creating review…")
         page.locator("#add").fill("UK")
         page.locator("#add").press("Enter")
         expect(page.locator("#po")).to_have_text("UK")

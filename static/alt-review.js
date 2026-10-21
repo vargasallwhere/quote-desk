@@ -396,6 +396,7 @@
     try {
       const response = await fetch(`${BASE_URL}/api/alt-review/${encodeURIComponent(sessionId)}`, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(30000) });
       if (response.status === 404 || response.status === 410) {
+        document.documentElement.dataset.reviewState = "error";
         lockForm("expired", "This Quote Desk review session has expired or is no longer available. If you submitted it, check Airtable before starting another review. Otherwise reopen it from Quote Desk.");
         byId("rv-state-message").classList.add("notice-error");
         return;
@@ -408,7 +409,9 @@
       showListNotice("rv-errors", "Configuration:", payload.configuration_errors);
       renderState(payload);
       byId("rv-load-help").hidden = true;
+      document.documentElement.dataset.reviewState = "ready";
     } catch (error) {
+      document.documentElement.dataset.reviewState = "error";
       lockForm("error", "Quote Desk could not load this review. Use Retry loading this saved review above, or return to the original Quote Desk tab and click Open again. No ticket was submitted.");
       byId("rv-state-message").classList.add("notice-error");
     }

@@ -1,5 +1,6 @@
 # STATUS 2026-09-29: ported. Runs standalone (tested locally with env logins, no Scout Dev).
 `app.py` now uses `scout_port.py` (functions copied from Scout Dev, logins from env) and `gmail_auth.py` (env token).
+<<<<<<< HEAD
 Alternative Approval Ticket now runs standalone; only Price Approval and Autopilot remain hidden without `SCOUT_URL`. See `ALTERNATIVE_APPROVALS.md` for configuration and safe verification.
 
 ## Standalone Alternative Approval — 2026-10-20
@@ -31,9 +32,13 @@ This verifies the workspace used for these checks, not a separate peer's desktop
 The regional templates now explicitly include product-service catalog unit prices. Live read-only EU quote checks verified USD 27.85 for SKU 16699, USD 55.70 for SKU 16702, and USD 129.18 for SKU 10237 under their respective verified MPNs. These are unit prices, not quantity-multiplied totals. Unavailable catalog prices are labeled unavailable rather than replaced with order-snapshot prices.
 
 All 34 Python tests and the three browser-side scripts passed after this change, including coverage for warranty prices, duplicate quantities, missing pricing, and explicit zero. The auto-draft wrapper was tested only with mocked Gmail; existing live Gmail drafts remain unchanged.
+=======
+Order Notes, Price Approval and Generate Autopilot Form now run inside Quote Desk (`scout_port_buttons.py`, `panel/`), no Scout Dev needed. Only Alternative Approval still hides itself unless `SCOUT_URL` is set.
+`python3 check_port.py` proves the copied functions match Scout Dev (expected differences: env-based logins, AIRTABLE_PAT, autopilot's imports).
+>>>>>>> c175c91b4b8d7748a99529b2127e7ae5ca6ee043
 
 ## Replit secrets to add (names only)
-`GMAIL_TOKEN_JSON` (contents of gmail_token.json), `ALLWHERE_USER`, `ALLWHERE_PASS`, `PS_USER`, `PS_PASS`.
+`GMAIL_TOKEN_JSON` (contents of gmail_token.json), `ALLWHERE_USER`, `ALLWHERE_PASS`, `PS_USER`, `PS_PASS`, plus for the new buttons `AIRTABLE_PAT` (Price Approval) and `GOOGLE_SHEETS_TOKEN_JSON` (contents of sheets_token.json, Drive+Sheets scope; Autopilot).
 
 ---
 Original notes:

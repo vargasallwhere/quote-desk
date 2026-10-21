@@ -80,6 +80,7 @@ select{padding:5px;border-radius:6px;border:1px solid var(--line);background:var
 </style><link rel="stylesheet" href="/static/depot-review.css"><link rel="stylesheet" href="/static/attachment-preview.css?v=__VIEWER_VERSION__"><script id="attachment-script" src="/static/attachment-preview.js?v=__VIEWER_VERSION__"></script><script src="/static/depot-review.js"></script></head><body>
 <div class="bar" id="bar"></div>
 <div class="legend"><button class="hl hl-cpu" data-k="cpu" aria-pressed="false">Chip &amp; cores</button><button class="hl hl-mem" data-k="mem" aria-pressed="false">Memory</button><button class="hl hl-ssd" data-k="ssd" aria-pressed="false">Storage</button><button class="hl hl-color" data-k="color" aria-pressed="false">Color</button><button class="hl hl-kb" data-k="kb" aria-pressed="false">Keyboard</button><button class="hl hl-size" data-k="size" aria-pressed="false">Screen size</button><button class="hl hl-mpn" data-k="mpn" aria-pressed="false">MPN</button></div>
+<<<<<<< HEAD
 <div class="split" id="main-split">
   <section class="panel"><div class="ph"><h2>Order details</h2><strong class="big mono" id="po"></strong></div><div id="cb" hidden></div><div id="cto" hidden></div><div id="depot-order-banner" hidden></div><div id="order"><p class="empty">Loading…</p></div><div class="ap" id="ap" hidden><div class="ph" style="padding:0 0 6px;border:0"><h2>Approvals</h2></div><div class="btns"><button class="btn" id="bAlt">Alternative Approval Ticket</button><button class="btn" id="bAr">Manual AR Ticket</button><button class="btn" id="bPr">Price Approval</button></div><div class="btns" id="usBtns" hidden><button class="btn" id="bTd">🇺🇸 TD Synnex Confirmation Email</button><button class="btn" id="bAp">Generate Autopilot Form</button></div><div id="usbox" class="note"></div><div id="apbox"></div></div></section>
   <section class="panel" id="vendor-panel"><div class="ph"><h2>Vendor email</h2><span class="sync" id="sync"></span></div><div id="thread"></div><section id="attachment-preview" aria-label="Attachment preview" hidden>
@@ -87,6 +88,11 @@ select{padding:5px;border-radius:6px;border:1px solid var(--line);background:var
     <div class="av-controls" id="av-controls" hidden><span id="av-pages" hidden><button class="btn" id="av-prev" aria-label="Previous page">Previous</button> <output id="av-page" aria-live="polite"></output> <button class="btn" id="av-next" aria-label="Next page">Next</button></span><button class="btn" id="av-fit">Fit width</button><button class="btn" id="av-actual">Actual size</button><button class="btn" id="av-out" aria-label="Zoom out">−</button><output id="av-zoom" aria-live="polite"></output><button class="btn" id="av-in" aria-label="Zoom in">+</button></div>
     <p id="av-feedback" role="status" aria-live="polite"></p><button class="btn" id="av-retry" hidden>Retry preview</button><div id="av-stage" class="av-stage" tabindex="0" aria-label="Scrollable attachment"></div>
   </section></section>
+=======
+<div class="split">
+  <section class="panel"><div class="ph"><h2>Order details</h2><strong class="big mono" id="po"></strong></div><div id="cb" hidden></div><div id="cto" hidden></div><div id="order"><p class="empty">Loading…</p></div><div class="ap" id="ap" hidden><div class="ph" style="padding:0 0 6px;border:0"><h2>Approvals</h2></div><div class="btns"><button class="btn" id="bAlt">Alternative Approval Ticket</button><button class="btn" id="bAr">Manual AR Ticket</button><button class="btn" id="bPr">Price Approval</button><button class="btn" id="bNote">📝 Order Notes</button></div><div class="btns" id="usBtns" hidden><button class="btn" id="bTd">🇺🇸 TD Synnex Confirmation Email</button><button class="btn" id="bAp">📋 Generate Autopilot Form</button></div><div id="usbox" class="note"></div><div id="apbox"></div></div></section>
+  <section class="panel"><div class="ph"><h2>Vendor email</h2><span class="sync" id="sync"></span></div><div id="thread"></div></section>
+>>>>>>> c175c91b4b8d7748a99529b2127e7ae5ca6ee043
 </div>
 <script>
 // If the external initializer fails, keep order/email usable and activation safe.
@@ -506,6 +512,7 @@ function picker(withText,btnLabel,endpoint){
     pickerFailure("Could not show requested items. Retry order details below.",withText,btnLabel,endpoint);return;
   }
   $("#apGo").onclick=async()=>{
+<<<<<<< HEAD
     if(picker.launch)return;
     const button=$("#apGo"),status=$("#apStat");
     if(cur!==po||req!==generation||tinfo!==info){status.textContent="The order changed. Click Alternative Approval Ticket again.";return}
@@ -567,6 +574,14 @@ function picker(withText,btnLabel,endpoint){
     }
   };
 }
+=======
+    const idx=[...document.querySelectorAll("#apbox input:checked")].map(x=>+x.value);
+    if(!idx.length){$("#apStat").textContent="Select at least one item.";return}
+    const w=window.open("","_blank");$("#apStat").textContent="Opening…";
+    try{const r=await fetch(endpoint,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({po:cur,items:idx,text:withText?$("#apText").value:""})});
+      const j=await r.json();if(!r.ok||!j.url)throw new Error(j.error||"failed");w.location=j.url;$("#apStat").textContent=""}
+    catch(e){if(w)w.close();$("#apStat").textContent="Could not open: "+e.message}}}
+>>>>>>> c175c91b4b8d7748a99529b2127e7ae5ca6ee043
 $("#bAlt").onclick=()=>picker(true,"Open alternative review","/api/alt-review");
 $("#bPr").onclick=()=>picker(false,"Open price approval review","/api/price-review");
 $("#bAr").onclick=()=>{
@@ -588,11 +603,23 @@ $("#bTd").onclick=async()=>{
     else{box.innerHTML='Confirmation text (no reply box on this order, copy it):'+warn+'<pre style="white-space:pre-wrap;margin:6px 0;font:12.5px/1.5 ui-monospace,Menlo,monospace" id="tdp"></pre><button class="btn" id="tdc">Copy</button>';
       $("#tdp").textContent=j.body;$("#tdc").onclick=()=>navigator.clipboard.writeText(j.body).then(()=>$("#tdc").textContent="Copied")}
   }catch(e){box.textContent="Could not build it: "+e.message}};
+$("#bNote").onclick=async()=>{
+  const box=$("#usbox");box.textContent="Building the order note…";
+  try{const r=await fetch("/api/order-note",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({po:cur})});
+    const j=await r.json();if(!r.ok||j.error)throw new Error(j.error||"failed");
+    let cto="";if(j.cto_detected){const m=(j.cto_mpns||[]).join(", ");cto=j.lead_time_approved?"This is a CTO device with an approved lead time, please proceed."+(m?" MPN: "+m:""):"⚠️ CTO — lead time not approved. A ticket is required."+(m?" MPN: "+m:"")}
+    await navigator.clipboard.writeText(j.note);
+    box.innerHTML=(cto?'<div><b>'+esc(cto)+'</b></div>':"")+'Copied to your clipboard:<pre style="white-space:pre-wrap;margin:6px 0;font:12.5px/1.5 ui-monospace,Menlo,monospace" id="ntp"></pre>';$("#ntp").textContent=j.note}
+  catch(e){box.textContent="Could not build it: "+e.message}};
 $("#bAp").onclick=async()=>{
   const box=$("#usbox"),w=window.open("","_blank");box.textContent="Generating the Autopilot form…";
   try{const r=await fetch("/api/autopilot",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({po:cur})});
     const j=await r.json();if(!r.ok||!j.url)throw new Error(j.error||"failed");w.location=j.url;box.textContent="Opened the Autopilot form in a new tab."}
   catch(e){if(w)w.close();box.textContent="Could not generate it: "+e.message}};
 </script><script>
+<<<<<<< HEAD
 fetch("/api/config").then(r=>r.json()).then(c=>{if(!c.scout)["bPr","bAp"].forEach(id=>{const b=document.getElementById(id);if(b)b.hidden=true})}).catch(()=>{});
+=======
+fetch("/api/config").then(r=>r.json()).then(c=>{if(!c.scout)["bAlt"].forEach(id=>{const b=document.getElementById(id);if(b)b.hidden=true})}).catch(()=>{});
+>>>>>>> c175c91b4b8d7748a99529b2127e7ae5ca6ee043
 </script>

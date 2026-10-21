@@ -16,6 +16,9 @@ from flask import Flask, jsonify, request, Response, send_from_directory
 
 from gmail_auth import get_gmail_service
 import requests
+import uuid
+from scout_port_buttons import (generate_order_note, create_pricing_approval_ticket, add_order_external_link,
+                                create_autopilot_review_sheet)
 from scout_port import (fetch_full_order, build_confirmation_email, get_order_info_for_ticket,
                         generate_auto_quote_email, fetch_order_status)
 
@@ -277,7 +280,11 @@ def config():
 
 @app.before_request
 def scout_only():
+<<<<<<< HEAD
     if not SCOUT and request.path in ("/api/price-review", "/api/autopilot"):
+=======
+    if not SCOUT and request.path == "/api/alt-review":
+>>>>>>> c175c91b4b8d7748a99529b2127e7ae5ca6ee043
         return jsonify({"error": "This button needs Scout Dev, which only runs on Sara's Mac."}), 503
 
 
@@ -299,14 +306,88 @@ def _header(info):
                                           "procurement_manager_email", "procurement_manager_name")} | {"is_rush": info.get("is_rush", False)}
 
 
+<<<<<<< HEAD
+=======
+@app.post("/api/alt-review")
+def alt_review():
+    """Same as Scout Dev's Alternative Approval: parse the pasted alternative, open its review page."""
+    d = request.get_json()
+    info = get_order_info_for_ticket(d["po"])
+    items = [info["items"][i] for i in d["items"]]
+    country = "uk" if "kingdom" in (info.get("shipping_country") or "").lower() else ("us" if "states" in (info.get("shipping_country") or "").lower() else "")
+    parsed = _scout("/parse-alt-description", {"text": d["text"], "country": country}) if d.get("text", "").strip() else {}
+    p = items[0]
+    mpn = parsed.get("mpn") or p.get("mpn") or ""
+    review = {**_header(info), "order_number": d["po"], "requested_sku": p.get("sku", ""), "multiple_skus": len(items) > 1,
+              "alt_type": "CTO device" if mpn.upper().startswith("Z") else "Out of stock / backordered",
+              "alt_subtype": "Model unavailable", "device_type": _device_type(p.get("product_name", "")),
+              "make": parsed.get("make") or ("Apple" if "apple" in p.get("product_name", "").lower() else ""),
+              "model": parsed.get("model", ""), "display_size": parsed.get("display_size", ""), "processor": parsed.get("processor", ""),
+              "memory": parsed.get("memory", ""), "storage": parsed.get("storage", ""), "color": parsed.get("color", ""),
+              "mpn": parsed.get("mpn", ""), "price": parsed.get("price", ""),
+              "keyboard_language": parsed.get("keyboard_language", country.upper()), "sku_country": parsed.get("sku_country", country.upper())}
+    sid = _scout("/review-session", review)["session_id"]
+    return jsonify({"url": f"{SCOUT}/review-v2?session={sid}"})
+
+
+_review_sessions = {}
+PANEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "panel")
+
+
+@app.get("/panel/<path:filename>")
+def panel_static(filename):
+    return send_from_directory(PANEL_DIR, filename)
+
+
+@app.get("/review-pricing")
+def review_pricing_page():
+    return send_from_directory(PANEL_DIR, "review_pricing.html")
+
+
+@app.get("/review-session/<sid>")
+def get_review_session(sid):
+    data = _review_sessions.get(sid)
+    if not data:
+        return jsonify({"error": "Session not found or expired"}), 404
+    return jsonify(data)
+
+
+>>>>>>> c175c91b4b8d7748a99529b2127e7ae5ca6ee043
 @app.post("/api/price-review")
 def price_review():
+    """Same as Scout Dev's Price Approval: open the review page pre-filled with the chosen items."""
     d = request.get_json()
     info = get_order_info_for_ticket(d["po"])
     review = {**_header(info), "order_number": d["po"],
               "items": [{"sku": info["items"][i].get("sku", ""), "product_name": info["items"][i].get("product_name", "")} for i in d["items"]]}
-    sid = _scout("/review-session", review)["session_id"]
-    return jsonify({"url": f"{SCOUT}/review-pricing?session={sid}"})
+    sid = uuid.uuid4().hex[:10]
+    _review_sessions[sid] = review
+    return jsonify({"url": f"/review-pricing?session={sid}"})
+
+
+@app.post("/create-pricing-approval")
+def create_pricing_approval_route():
+    """Copied from Scout Dev. Creates the Airtable ticket, then attaches its link to the order."""
+    data = request.get_json(force=True)
+    order_number = (data.get("order_number") or "").strip()
+    header = data.get("header") or {}
+    products_text = (data.get("products_text") or "").strip()
+    if not order_number:
+        return jsonify({"error": "order_number is required"}), 400
+    result = create_pricing_approval_ticket(order_number, header, products_text)
+    if result.get("ok") and result.get("url"):
+        add_order_external_link(order_number, result["url"])
+    return jsonify(result)
+
+
+@app.post("/api/order-note")
+def order_note():
+    """Same as Scout Dev's Order Notes: returns the formatted note (the page copies it)."""
+    order_number = (request.get_json(force=True).get("po") or "").strip()
+    if not order_number:
+        return jsonify({"error": "order_number is required"}), 400
+    result = generate_order_note(order_number)
+    return jsonify(result), (404 if "error" in result else 200)
 
 
 @app.post("/api/td-confirm")
@@ -328,8 +409,14 @@ def td_confirm():
 @app.post("/api/autopilot")
 def autopilot():
     """Scout Dev's Generate Autopilot Form: creates the Google Sheet and returns its link."""
-    r = _scout("/autopilot-sheet", {"order_number": request.get_json()["po"].strip()})
-    return jsonify(r), (400 if "error" in r else 200)
+    order_number = request.get_json()["po"].strip()
+    try:
+        order = fetch_full_order(order_number)
+        if "error" in order:
+            return jsonify(order), 400
+        return jsonify({"ok": True, "url": create_autopilot_review_sheet(order)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.get("/api/attachment/<msg>/<att>")

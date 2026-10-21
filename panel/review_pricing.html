@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pricing Approval — allwhere</title>
+  <link rel="stylesheet" href="/panel/review_v2.css" />
+  <style>
+    .rp-products-field {
+      padding: 12px 18px;
+    }
+    .rp-products-field label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      display: block;
+      margin-bottom: 6px;
+    }
+    .rp-products-field .rp-hint {
+      font-size: 11px;
+      color: #aaa;
+      margin-bottom: 8px;
+      line-height: 1.5;
+    }
+    .rp-products-textarea {
+      width: 100%;
+      min-height: 180px;
+      padding: 10px 12px;
+      background: #faf9f7;
+      border: 1px solid #d4cfc8;
+      border-radius: 5px;
+      color: #1a1a1a;
+      font-size: 13px;
+      font-family: "SF Mono", "Menlo", "Monaco", monospace;
+      line-height: 1.6;
+      resize: vertical;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .rp-products-textarea:focus {
+      outline: none;
+      border-color: #2d6a4f;
+      box-shadow: 0 0 0 2px rgba(45,106,79,0.12);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="rv-top-banner">
+    <span class="rv-wordmark">allwhere</span>
+  </div>
+
+  <div class="rv-card-header" style="background: #7b5ea7;">
+    <span class="rv-card-header-icon">💰</span>
+    <div class="rv-card-header-title">Pricing Approval Request</div>
+    <div class="rv-card-header-subtitle">Review and fill in Old Price / New Price for each item, then submit.</div>
+  </div>
+
+  <div class="rv-body">
+
+    <!-- Section: Order Info -->
+    <div class="rv-section">
+      <div class="rv-section-title">Order Info</div>
+      <div class="rv-row-3">
+        <div class="rv-field">
+          <label>Order #</label>
+          <span id="rp-order" class="rv-static"></span>
+        </div>
+        <div class="rv-field">
+          <label>Org</label>
+          <span id="rp-org" class="rv-static rv-dim"></span>
+        </div>
+        <div class="rv-field">
+          <label>Assigned To (OM)</label>
+          <span id="rp-om" class="rv-static rv-dim"></span>
+        </div>
+      </div>
+      <div class="rv-row-2" style="border-top: 1px solid #ece8e2;">
+        <div class="rv-field">
+          <label>Requested By (Procurement) <span class="rv-req">*</span></label>
+          <select id="rp-requested-by" class="rv-input">
+            <option value="sara@allwhere.co">Sara Vargas</option>
+            <option value="keajah@allwhere.co">Keajah</option>
+            <option value="giancarlo@allwhere.co">Giancarlo Sanchez</option>
+            <option value="olivia@allwhere.co">Olivia</option>
+            <option value="emma@allwhere.co">Emma Vasey</option>
+            <option value="matt.meehan@allwhere.co">Matt Meehan</option>
+            <option value="richard@allwhere.co">Richard Nguyen</option>
+          </select>
+        </div>
+        <div class="rv-field">
+          <label>Request Type</label>
+          <span class="rv-static">Automated Pricing Approval</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section: Products Requiring Approval -->
+    <div class="rv-section">
+      <div class="rv-section-title">Products Requiring Approval</div>
+      <div class="rp-products-field">
+        <label>Product Details <span class="rv-req">*</span></label>
+        <div class="rp-hint">
+          Format per item: SKU, Product Name, Old Price, New Price.<br>
+          Fill in the Old Price and New Price lines before submitting.
+        </div>
+        <textarea id="rp-products-text" class="rp-products-textarea" spellcheck="false"></textarea>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="rv-footer">
+    <button id="rp-submit-btn" class="rv-submit-btn">Submit</button>
+    <span id="rp-submit-status" class="rv-status"></span>
+  </div>
+
+  <div id="rp-success" class="rv-success hidden">
+    ✓ Pricing approval created —
+    <a id="rp-airtable-link" href="#" target="_blank">open in Airtable</a>
+  </div>
+
+  <script src="/panel/review_pricing.js"></script>
+</body>
+</html>

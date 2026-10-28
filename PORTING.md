@@ -1,6 +1,6 @@
 # STATUS 2026-09-29: ported. Runs standalone (tested locally with env logins, no Scout Dev).
 `app.py` now uses `scout_port.py` (functions copied from Scout Dev, logins from env) and `gmail_auth.py` (env token).
-Order Notes, Price Approval and Generate Autopilot Form now run inside Quote Desk (`scout_port_buttons.py`, `panel/`), no Scout Dev needed. Only Alternative Approval still hides itself unless `SCOUT_URL` is set.
+Order Notes, Price Approval and Generate Autopilot Form now run inside Quote Desk (`scout_port_buttons.py`, `panel/`), no Scout Dev needed. Alternative Approval now runs inside Quote Desk too (`alt_approval.py`, `panel/review_v2.*`); it needs the secret `AUTOMATED_APPROVALS_WEBHOOK_SECRET` (same value as Scout Dev's plist) or it refuses to create the ticket.
 `python3 check_port.py` proves the copied functions match Scout Dev (expected differences: env-based logins, AIRTABLE_PAT, autopilot's imports).
 
 ## Replit secrets to add (names only)

@@ -11,6 +11,7 @@ import requests
 import uuid
 from scout_port_buttons import (generate_order_note, create_pricing_approval_ticket, add_order_external_link,
                                 create_autopilot_review_sheet)
+from alt_approval import _parse_alt_description, create_airtable_ticket_v2, AUTOMATED_APPROVALS_WEBHOOK_SECRET
 from scout_port import (fetch_full_order, build_confirmation_email, get_order_info_for_ticket,
                         generate_auto_quote_email, ALLWHERE_AUTH)
 
@@ -172,12 +173,6 @@ def config():
     return jsonify({"scout": bool(SCOUT)})
 
 
-@app.before_request
-def scout_only():
-    if not SCOUT and request.path == "/api/alt-review":
-        return jsonify({"error": "This button needs Scout Dev, which only runs on Sara's Mac."}), 503
-
-
 def _device_type(name):
     n = name.lower()
     if "macbook" in n or "laptop" in n: return "Laptop"
@@ -198,12 +193,12 @@ def _header(info):
 
 @app.post("/api/alt-review")
 def alt_review():
-    """Same as Scout Dev's Alternative Approval: parse the pasted alternative, open its review page."""
+    """Same as Scout Dev's Alternative Approval: parse the pasted alternative, open its review page (now served here)."""
     d = request.get_json()
     info = get_order_info_for_ticket(d["po"])
     items = [info["items"][i] for i in d["items"]]
     country = "uk" if "kingdom" in (info.get("shipping_country") or "").lower() else ("us" if "states" in (info.get("shipping_country") or "").lower() else "")
-    parsed = _scout("/parse-alt-description", {"text": d["text"], "country": country}) if d.get("text", "").strip() else {}
+    parsed = _parse_alt_description(d["text"].strip(), country) if d.get("text", "").strip() else {}
     p = items[0]
     mpn = parsed.get("mpn") or p.get("mpn") or ""
     review = {**_header(info), "order_number": d["po"], "requested_sku": p.get("sku", ""), "multiple_skus": len(items) > 1,
@@ -214,8 +209,28 @@ def alt_review():
               "memory": parsed.get("memory", ""), "storage": parsed.get("storage", ""), "color": parsed.get("color", ""),
               "mpn": parsed.get("mpn", ""), "price": parsed.get("price", ""),
               "keyboard_language": parsed.get("keyboard_language", country.upper()), "sku_country": parsed.get("sku_country", country.upper())}
-    sid = _scout("/review-session", review)["session_id"]
-    return jsonify({"url": f"{SCOUT}/review-v2?session={sid}"})
+    sid = uuid.uuid4().hex[:10]
+    _review_sessions[sid] = review
+    return jsonify({"url": f"/review-v2?session={sid}"})
+
+
+@app.get("/review-v2")
+def review_v2_page():
+    return send_from_directory(PANEL_DIR, "review_v2.html")
+
+
+@app.post("/create-airtable-ticket-v2")
+def create_ticket_v2_route():
+    """Copied from Scout Dev. Creates the Alternate Approval ticket; the webhook call inside hands it to Yehuda's pipeline.
+    Do NOT attach the Airtable link to the order here: Yehuda's pipeline does it, and doing both made duplicate links."""
+    data = request.get_json(force=True)
+    order_number = (data.get("order_number") or "").strip()
+    if not order_number:
+        return jsonify({"error": "order_number is required"}), 400
+    if not AUTOMATED_APPROVALS_WEBHOOK_SECRET:
+        # Without the webhook the ticket would still email the customer but never enter the approval pipeline.
+        return jsonify({"error": "AUTOMATED_APPROVALS_WEBHOOK_SECRET is not set on this server, so nothing was created."}), 503
+    return jsonify(create_airtable_ticket_v2(order_number, data.get("header") or {}, data.get("ticket_data") or {}))
 
 
 _review_sessions = {}
